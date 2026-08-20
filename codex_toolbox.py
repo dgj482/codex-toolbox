@@ -392,6 +392,36 @@ def apply_provider(pid, proxy_url=None):
     return p["name"]
 
 
+def ensure_provider_config(pid, proxy_url=None):
+    """确保指定供应商已写入 Codex 配置，但不改变全局默认通道。"""
+    if pid == OFFICIAL_ID:
+        return
+    provider = next((item for item in load_providers() if item.get("id") == pid), None)
+    if not provider:
+        raise ValueError(f"供应商 {pid} 不存在")
+    try:
+        with open(CONFIG, encoding="utf-8") as handle:
+            content = handle.read()
+    except FileNotFoundError:
+        raise RuntimeError("未找到 Codex 配置。请先安装、登录并至少启动一次 Codex。")
+    provider_copy = dict(provider)
+    if provider.get("proxy"):
+        if not proxy_url:
+            raise RuntimeError("该供应商需要本地翻译代理，但代理尚未启动。")
+        provider_copy["base_url"] = proxy_url
+        provider_copy.pop("upstream_base", None)
+    updated = upsert_section(content, pid, provider_copy)
+    if updated == content:
+        return
+    os.makedirs(BAK_DIR, exist_ok=True)
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    shutil.copy2(CONFIG, os.path.join(BAK_DIR, f"config.toml.bak_{stamp}"))
+    tmp = CONFIG + ".toolbox.tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(updated)
+    os.replace(tmp, CONFIG)
+
+
 def _friendly_titles():
     titles = {}
     try:
@@ -765,12 +795,114 @@ def unarchive_threads(target_ids):
     return stamp
 
 
+def set_threads_provider_official(target_ids, provider_id):
+    """
+    通过 Codex 官方 thread/resume 为已有会话覆盖通道和模型。
+
+    本函数只读取 SQLite 用于预检和结果校验，不直接写入 SQLite/JSONL。
+    """
+    target_ids = list(dict.fromkeys(tid for tid in target_ids if tid))
+    if not target_ids:
+        raise ValueError("没有选中会话。")
+    provider = next((item for item in load_providers() if item.get("id") == provider_id), None)
+    if not provider:
+        raise ValueError(f"供应商 {provider_id} 不存在")
+    model = provider.get("model") or ""
+    if not model:
+        raise ValueError(f"供应商 {provider.get('name', provider_id)} 未设置模型。")
+
+    placeholders = ",".join("?" for _ in target_ids)
+    conn = sqlite3.connect(STATE_DB, timeout=15)
+    try:
+        rows = conn.execute(
+            f"SELECT id, rollout_path, archived, model_provider, model "
+            f"FROM threads WHERE id IN ({placeholders})",
+            target_ids,
+        ).fetchall()
+    finally:
+        conn.close()
+    row_map = {row[0]: row for row in rows}
+    missing = [tid for tid in target_ids if tid not in row_map]
+    if missing:
+        raise RuntimeError(f"数据库中找不到会话：{', '.join(missing)}")
+
+    rollout_files = []
+    originals = {}
+    for tid in target_ids:
+        _, rollout_path, archived, original_provider, original_model = row_map[tid]
+        if archived:
+            raise RuntimeError(f"会话已归档，请先恢复：{tid}")
+        normal_path = _normal_windows_path(rollout_path)
+        if not normal_path or not os.path.isfile(normal_path):
+            raise RuntimeError(f"会话文件不存在，已取消切换：{tid}")
+        rollout_files.append(normal_path)
+        originals[tid] = (original_provider, original_model)
+
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    operation_backup = os.path.join(BAK_DIR, f"thread_route_{stamp}")
+    rollout_backup = os.path.join(operation_backup, "rollouts")
+    os.makedirs(rollout_backup, exist_ok=False)
+    _backup_sqlite(STATE_DB, os.path.join(operation_backup, "state_5.sqlite"))
+    _backup_sqlite(CATALOG_DB, os.path.join(operation_backup, "codex-dev.db"))
+    for source in rollout_files:
+        shutil.copy2(source, os.path.join(rollout_backup, os.path.basename(source)))
+
+    executable = _find_codex_executable()
+    client = None
+    switched = []
+    try:
+        client = _CodexAppServer(executable)
+        for tid in target_ids:
+            result = client.request("thread/resume", {
+                "threadId": tid,
+                "modelProvider": provider_id,
+                "model": model,
+                "excludeTurns": True,
+            }) or {}
+            if isinstance(result, dict):
+                returned_provider = result.get("modelProvider")
+                returned_model = result.get("model")
+                if returned_provider and returned_provider != provider_id:
+                    raise RuntimeError(f"官方接口返回的通道不一致：{tid}")
+                if returned_model and returned_model != model:
+                    raise RuntimeError(f"官方接口返回的模型不一致：{tid}")
+            switched.append(tid)
+
+        verify = sqlite3.connect(STATE_DB, timeout=15)
+        try:
+            for tid in target_ids:
+                row = verify.execute(
+                    "SELECT model_provider, model FROM threads WHERE id=?", (tid,)
+                ).fetchone()
+                if not row or row[0] != provider_id or row[1] != model:
+                    raise RuntimeError(
+                        f"官方接口未持久化会话通道，已取消：{tid}"
+                    )
+        finally:
+            verify.close()
+    except Exception:
+        if client:
+            for tid in reversed(switched):
+                original_provider, original_model = originals[tid]
+                try:
+                    client.request("thread/resume", {
+                        "threadId": tid,
+                        "modelProvider": original_provider,
+                        "model": original_model,
+                        "excludeTurns": True,
+                    })
+                except Exception:
+                    pass
+        raise
+    finally:
+        if client:
+            client.close()
+    return stamp
+
+
 def set_thread_provider(tid, provider):
-    """公开测试版不直接修改 Codex 内部数据库或会话 JSONL。"""
-    raise RuntimeError(
-        "公开测试版已暂停单会话通道切换。请使用全局通道；"
-        "该功能将在迁移到官方 App Server 后恢复。"
-    )
+    """向后兼容的单会话入口，内部使用官方 app-server。"""
+    return set_threads_provider_official([tid], provider)
 
 
 class ProviderDialog(ttk.Toplevel):

@@ -147,13 +147,38 @@ class Api:
         p = next((x for x in provs if x["id"] == pid), None)
         if not p:
             return {"ok": False, "error": f"供应商 {pid} 不存在"}
+        following = core.following_thread_ids()
+        if following and core.codex_running():
+            return {
+                "ok": False,
+                "error": f"有 {len(following)} 个会话设为跟随全局。"
+                         "请先完全退出 Codex（含托盘）再切换。",
+            }
+        previous_pid = core.read_provider()
+        sessions_switched = False
         try:
             proxy_url = self._ensure_proxy(p) if p.get("proxy") else None
+            # 先准备供应商配置，再同步跟随会话，最后才修改全局默认值。
+            # 这样全局写入失败时，仍可通过官方接口把会话恢复到原通道。
+            core.ensure_provider_config(pid, proxy_url)
+            followed = 0
+            if following:
+                core.set_threads_provider_official(following, pid)
+                sessions_switched = True
+                followed = len(following)
             name = core.apply_provider(pid, proxy_url)
+            if following:
+                core.set_thread_route_mode(following, "follow", pid)
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            rollback_error = ""
+            if sessions_switched and previous_pid != pid:
+                try:
+                    core.set_threads_provider_official(following, previous_pid)
+                except Exception as rollback_exc:
+                    rollback_error = f"；跟随会话自动恢复失败：{rollback_exc}"
+            return {"ok": False, "error": str(e) + rollback_error}
         return {"ok": True, "name": name, "proxy": bool(p.get("proxy")),
-                "followed": 0}
+                "followed": followed}
 
     def diagnose_provider(self, pid):
         p = next((x for x in core.load_providers() if x.get("id") == pid), None)
@@ -339,10 +364,35 @@ class Api:
         return {"ok": False, "error": "公开测试版已暂停直接修改单会话数据。"}
 
     def switch_sessions(self, tids, pid):
-        return {"ok": False, "error": "公开测试版暂不提供单会话通道切换，请使用全局通道。"}
+        if core.codex_running():
+            return {"ok": False, "error": "请先完全退出 Codex（含托盘）"}
+        provider = next((item for item in core.load_providers() if item.get("id") == pid), None)
+        if not provider:
+            return {"ok": False, "error": "供应商不存在"}
+        try:
+            proxy_url = self._ensure_proxy(provider) if provider.get("proxy") else None
+            core.ensure_provider_config(pid, proxy_url)
+            stamp = core.set_threads_provider_official(tids, pid)
+            core.set_thread_route_mode(tids, "fixed", pid)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True, "count": len(tids), "backup": stamp}
 
     def follow_sessions(self, tids):
-        return {"ok": False, "error": "公开测试版暂不提供跟随全局策略。"}
+        if core.codex_running():
+            return {"ok": False, "error": "请先完全退出 Codex（含托盘）"}
+        pid = core.read_provider()
+        provider = next((item for item in core.load_providers() if item.get("id") == pid), None)
+        if not provider:
+            return {"ok": False, "error": f"当前全局供应商 {pid} 不存在"}
+        try:
+            proxy_url = self._ensure_proxy(provider) if provider.get("proxy") else None
+            core.ensure_provider_config(pid, proxy_url)
+            stamp = core.set_threads_provider_official(tids, pid)
+            core.set_thread_route_mode(tids, "follow", pid)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True, "count": len(tids), "backup": stamp, "provider": pid}
 
     def archive_sessions(self, tids):
         if core.codex_running():

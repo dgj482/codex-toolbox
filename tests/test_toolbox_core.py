@@ -46,6 +46,40 @@ class ToolboxCoreTests(unittest.TestCase):
         conn.close()
         return state, catalog, backup, rollout, stored_path
 
+    @staticmethod
+    def _make_route_fixture(td, thread_ids=("thread-route",)):
+        state = os.path.join(td, "state.sqlite")
+        catalog = os.path.join(td, "catalog.sqlite")
+        backup = os.path.join(td, "backups")
+        sessions = os.path.join(td, "sessions")
+        os.makedirs(sessions)
+
+        conn = sqlite3.connect(state)
+        conn.execute(
+            "CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT, archived INTEGER, "
+            "model_provider TEXT, model TEXT)"
+        )
+        rollouts = {}
+        for tid in thread_ids:
+            rollout = os.path.join(sessions, f"rollout-{tid}.jsonl")
+            Path(rollout).write_text(
+                json.dumps({"type": "session_meta", "payload": {"id": tid}}) + "\n",
+                encoding="utf-8",
+            )
+            conn.execute(
+                "INSERT INTO threads VALUES (?, ?, 0, 'openai', 'gpt-old')",
+                (tid, rollout),
+            )
+            rollouts[tid] = rollout
+        conn.commit()
+        conn.close()
+
+        conn = sqlite3.connect(catalog)
+        conn.execute("CREATE TABLE local_thread_catalog (thread_id TEXT, display_title TEXT)")
+        conn.commit()
+        conn.close()
+        return state, catalog, backup, rollouts
+
     def test_model_family_only_flags_cross_provider_residue(self):
         self.assertEqual(Api._model_family("gpt-5.6-sol"), Api._model_family("gpt-5.6-terra"))
         self.assertNotEqual(Api._model_family("qwen3.8-max"), Api._model_family("gpt-5.6-terra"))
@@ -80,9 +114,106 @@ class ToolboxCoreTests(unittest.TestCase):
                 self.assertEqual(routes["c"]["provider"], "qwen")
                 self.assertEqual(set(core.following_thread_ids()), {"a", "b"})
 
-    def test_public_beta_blocks_direct_thread_rewrite(self):
-        with self.assertRaisesRegex(RuntimeError, "暂停单会话通道切换"):
-            core.set_thread_provider("thread-1", "qwen")
+    def test_thread_provider_uses_official_resume_without_editing_rollout(self):
+        with tempfile.TemporaryDirectory() as td:
+            state, catalog, backup, rollouts = self._make_route_fixture(td)
+            original_rollout = Path(rollouts["thread-route"]).read_bytes()
+            providers = [
+                {"id": "openai", "name": "官方", "model": "gpt-old"},
+                {"id": "qwen", "name": "千问", "model": "qwen-test"},
+            ]
+
+            class FakeAppServer:
+                requests = []
+
+                def __init__(self, executable):
+                    self.executable = executable
+
+                def request(self, method, params):
+                    if method != "thread/resume":
+                        raise AssertionError(method)
+                    FakeAppServer.requests.append(dict(params))
+                    conn = sqlite3.connect(core.STATE_DB)
+                    with conn:
+                        conn.execute(
+                            "UPDATE threads SET model_provider=?, model=? WHERE id=?",
+                            (params["modelProvider"], params["model"], params["threadId"]),
+                        )
+                    conn.close()
+                    return {
+                        "modelProvider": params["modelProvider"],
+                        "model": params["model"],
+                    }
+
+                def close(self):
+                    pass
+
+            with mock.patch.object(core, "STATE_DB", state), \
+                 mock.patch.object(core, "CATALOG_DB", catalog), \
+                 mock.patch.object(core, "BAK_DIR", backup), \
+                 mock.patch.object(core, "load_providers", return_value=providers), \
+                 mock.patch.object(core, "_find_codex_executable", return_value="codex.exe"), \
+                 mock.patch.object(core, "_CodexAppServer", FakeAppServer):
+                stamp = core.set_thread_provider("thread-route", "qwen")
+
+            conn = sqlite3.connect(state)
+            row = conn.execute(
+                "SELECT model_provider, model FROM threads WHERE id='thread-route'"
+            ).fetchone()
+            conn.close()
+            self.assertEqual(row, ("qwen", "qwen-test"))
+            self.assertEqual(Path(rollouts["thread-route"]).read_bytes(), original_rollout)
+            self.assertEqual(FakeAppServer.requests[0]["excludeTurns"], True)
+            self.assertTrue(os.path.isfile(os.path.join(
+                backup, f"thread_route_{stamp}", "state_5.sqlite"
+            )))
+
+    def test_thread_provider_failure_rolls_back_switched_threads(self):
+        with tempfile.TemporaryDirectory() as td:
+            tids = ("thread-a", "thread-b")
+            state, catalog, backup, _ = self._make_route_fixture(td, tids)
+            providers = [
+                {"id": "openai", "name": "官方", "model": "gpt-old"},
+                {"id": "qwen", "name": "千问", "model": "qwen-test"},
+            ]
+
+            class FailingSecondServer:
+                def __init__(self, executable):
+                    pass
+
+                def request(self, method, params):
+                    if params["threadId"] == "thread-b" and params["modelProvider"] == "qwen":
+                        raise RuntimeError("模拟第二个会话切换失败")
+                    conn = sqlite3.connect(core.STATE_DB)
+                    with conn:
+                        conn.execute(
+                            "UPDATE threads SET model_provider=?, model=? WHERE id=?",
+                            (params["modelProvider"], params["model"], params["threadId"]),
+                        )
+                    conn.close()
+                    return dict(params)
+
+                def close(self):
+                    pass
+
+            with mock.patch.object(core, "STATE_DB", state), \
+                 mock.patch.object(core, "CATALOG_DB", catalog), \
+                 mock.patch.object(core, "BAK_DIR", backup), \
+                 mock.patch.object(core, "load_providers", return_value=providers), \
+                 mock.patch.object(core, "_find_codex_executable", return_value="codex.exe"), \
+                 mock.patch.object(core, "_CodexAppServer", FailingSecondServer):
+                with self.assertRaisesRegex(RuntimeError, "模拟第二个会话切换失败"):
+                    core.set_threads_provider_official(tids, "qwen")
+
+            conn = sqlite3.connect(state)
+            rows = conn.execute(
+                "SELECT id, model_provider, model FROM threads ORDER BY id"
+            ).fetchall()
+            conn.close()
+            self.assertEqual(rows, [
+                ("thread-a", "openai", "gpt-old"),
+                ("thread-b", "openai", "gpt-old"),
+            ])
 
     def test_provider_block_uses_command_auth_not_plaintext_token(self):
         provider = {

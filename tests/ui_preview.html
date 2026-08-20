@@ -21,9 +21,9 @@ document.getElementById('preview').addEventListener('load', event => {
     get_providers: async()=>providers,
     get_status: async()=>({provider:'qwen',provider_name:'通义千问',model:'qwen3.8-max',codex_running:true,proxy_running:false,proxy_url:''}),
     get_sessions: async()=>[
-      {id:'1',title:'帮我看看千问会话为什么无法响应',provider_name:'通义千问'},
-      {id:'2',title:'Codex 工具箱公开发布优化',provider_name:'官方 ChatGPT Plus'},
-      {id:'3',title:'归档功能验证与恢复测试',provider_name:'官方 ChatGPT Plus'},
+      {id:'1',title:'帮我看看千问会话为什么无法响应',provider:'qwen',provider_name:'通义千问',model:'qwen3.8-max',route_mode:'fixed',route_label:'固定通道'},
+      {id:'2',title:'Codex 工具箱公开发布优化',provider:'openai',provider_name:'官方 ChatGPT Plus',model:'gpt-5.6-terra',route_mode:'follow',route_label:'跟随全局'},
+      {id:'3',title:'归档功能验证与恢复测试',provider:'openai',provider_name:'官方 ChatGPT Plus',model:'qwen3.8-max',model_mismatch:true,route_mode:'same',route_label:'与默认一致'},
     ],
     get_archived_sessions: async()=>[
       {id:'4',title:'旧版代理连接测试',provider_name:'通义千问'},
@@ -32,6 +32,9 @@ document.getElementById('preview').addEventListener('load', event => {
   target.dispatchEvent(new target.Event('pywebviewready'));
   if (location.hash === '#archive') {
     setTimeout(() => target.document.querySelector('[data-tab="tab-archive"]').click(), 80);
+  }
+  if (location.hash === '#routes') {
+    setTimeout(() => target.document.querySelector('[data-tab="tab-routes"]').click(), 80);
   }
   if (location.hash === '#modal') {
     setTimeout(() => target.openProviderModal(), 80);

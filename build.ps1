@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path

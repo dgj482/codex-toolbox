@@ -18,7 +18,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: python -m pip install -r requirements-dev.txt
-      - shell: powershell
+      - shell: pwsh
         run: .\build.ps1
       - uses: actions/upload-artifact@v4
         with:

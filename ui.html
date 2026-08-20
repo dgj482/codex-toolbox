@@ -413,6 +413,40 @@ main { flex:1; padding:24px 28px 30px; overflow-y:auto; }
 .s-prov { padding:3px 6px; border-radius:6px; background:rgba(255,255,255,.04); font-size:9.5px; }
 .archive-actions { display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,.055); }
 .selected-count { margin-right:auto; color:var(--muted-2); font-size:10px; }
+.route-layout { display:grid; grid-template-columns:minmax(0,1fr) 286px; gap:14px; align-items:start; }
+.route-card { padding:0; overflow:hidden; margin:0; }
+.route-card .section-header { min-height:72px; padding:16px 18px; }
+.route-card .section-body { padding:12px; }
+.route-list { display:flex; flex-direction:column; gap:8px; max-height:430px; overflow-y:auto; padding-right:3px; }
+.route-item {
+  min-height:68px; padding:11px 12px; display:flex; align-items:center; gap:11px;
+  background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.06);
+  border-radius:11px; cursor:pointer; transition:all .14s;
+}
+.route-item:hover { background:rgba(255,255,255,.04); border-color:rgba(137,148,255,.24); }
+.route-item.checked { background:rgba(109,124,255,.1); border-color:rgba(109,124,255,.55); }
+.route-item .cb {
+  width:18px; height:18px; border:1px solid #455068; border-radius:5px; flex:0 0 auto;
+  display:grid; place-items:center; color:transparent; font-size:11px;
+}
+.route-item.checked .cb { color:#fff; background:var(--blue); border-color:var(--blue); }
+.route-main { min-width:0; flex:1; }
+.route-title { color:#e4e8f0; font-size:11.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.route-meta { display:flex; align-items:center; gap:7px; margin-top:7px; color:var(--muted-2); font-size:9.5px; }
+.route-meta .route-model { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.route-tag { font-size:9px; padding:3px 7px; border-radius:6px; font-weight:700; }
+.route-tag.follow { color:#a9c5ff; background:rgba(82,128,207,.2); }
+.route-tag.fixed { color:#f5c77f; background:rgba(198,139,48,.16); }
+.route-tag.same { color:#aab3c2; background:rgba(255,255,255,.055); }
+.route-tag.bad { color:#ff9b95; background:rgba(255,113,104,.13); }
+.route-provider { color:#c9d0dd; font-size:10px; padding:4px 7px; background:rgba(255,255,255,.045); border-radius:7px; white-space:nowrap; }
+.route-controls { padding:18px; position:sticky; top:0; }
+.route-controls h2 { font-size:15px; margin-bottom:6px; }
+.route-controls > p { color:var(--muted); font-size:10.5px; line-height:1.55; margin-bottom:17px; }
+.route-controls .field { margin-bottom:14px; }
+.route-controls .btn { width:100%; margin-top:8px; }
+.route-selected { padding:11px 12px; margin:4px 0 10px; border-radius:10px; background:rgba(7,10,16,.42); color:var(--muted); font-size:10.5px; }
+.route-tip { margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,.06); color:var(--muted-2); font-size:9.5px; line-height:1.55; }
 .overlay { background:rgba(3,5,9,.72); backdrop-filter:blur(8px); }
 .modal {
   width:600px; padding:0; border-radius:18px; overflow:hidden;
@@ -445,6 +479,8 @@ select:focus,input:focus { border-color:rgba(109,124,255,.75); box-shadow:0 0 0 
   .overview-card { grid-template-columns:1fr; }
   .overview-copy { border-right:0; border-bottom:1px solid rgba(255,255,255,.06); }
   .p-list { grid-template-columns:1fr; }
+  .route-layout { grid-template-columns:1fr; }
+  .route-controls { position:static; }
 }
 </style>
 </head>
@@ -460,6 +496,10 @@ select:focus,input:focus { border-color:rgba(109,124,255,.75); box-shadow:0 0 0 
       <button class="tab-btn active" data-tab="tab-switch" data-title="通道控制台" data-subtitle="管理 Codex 全局默认模型通道">
         <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 7h11M19 7h1M4 17h1M9 17h11M15 4v6M9 14v6"/></svg></span>
         <span>通道切换</span>
+      </button>
+      <button class="tab-btn" data-tab="tab-routes" data-title="会话路由" data-subtitle="让不同会话固定使用不同模型通道">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 6h5a3 3 0 0 1 3 3v6a3 3 0 0 0 2 2.8M15 9a3 3 0 0 1 2-2.8"/></svg></span>
+        <span>会话路由</span>
       </button>
       <button class="tab-btn" data-tab="tab-archive" data-title="会话管理" data-subtitle="通过 Codex 官方接口归档与恢复">
         <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4zM3 4h18v3H3zM9 11h6"/></svg></span>
@@ -524,7 +564,7 @@ select:focus,input:focus { border-color:rgba(109,124,255,.75); box-shadow:0 0 0 
           <div class="section-header">
             <div class="section-title">
               <h2>全局默认通道</h2>
-              <p>切换后需重启 Codex 生效；公开版不直接改写单个会话</p>
+              <p>决定新会话默认走哪条通道；已有会话可在“会话路由”中单独设置</p>
             </div>
             <button class="btn green" onclick="openProviderModal()">＋ 添加供应商</button>
           </div>
@@ -538,6 +578,40 @@ select:focus,input:focus { border-color:rgba(109,124,255,.75); box-shadow:0 0 0 
               <button class="btn red" id="btn-delete" onclick="deleteSelected()">删除</button>
               <button class="btn blue" id="btn-switch" onclick="switchSelected()">切换到选中 →</button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 会话路由 ============ -->
+      <div class="panel" id="tab-routes">
+        <div class="safety-banner">
+          <span class="safety-icon">✓</span>
+          <span>使用 Codex 官方 <strong>thread/resume</strong> 接口切换单个会话，不直接改写 SQLite 或 JSONL；操作前自动备份。执行前请完全退出 Codex（含托盘）。</span>
+        </div>
+        <div class="route-layout">
+          <div class="card route-card">
+            <div class="section-header">
+              <div class="section-title">
+                <h2>活跃会话 <span class="count-pill" id="route-count">0</span></h2>
+                <p>每个会话保留自己的通道，不影响其他会话</p>
+              </div>
+              <button class="btn ghost" onclick="loadSessions()">刷新</button>
+            </div>
+            <div class="section-body">
+              <div class="route-list" id="route-list"></div>
+            </div>
+          </div>
+          <div class="card route-controls">
+            <h2>设置选中会话</h2>
+            <p>“固定通道”后不随全局改变；“跟随全局”会在以后切换全局通道时自动同步。</p>
+            <div class="route-selected" id="route-selected">已选 0 个会话</div>
+            <div class="field">
+              <label>目标通道</label>
+              <select id="route-provider"></select>
+            </div>
+            <button class="btn blue" id="btn-route-fixed" onclick="doFixRoute()">固定到目标通道</button>
+            <button class="btn ghost" id="btn-route-follow" onclick="doFollowRoute()">改为跟随全局</button>
+            <div class="route-tip">切换完成后重新启动 Codex。若官方接口返回异常，工具箱会尝试恢复原通道，并保留操作前备份。</div>
           </div>
         </div>
       </div>
@@ -686,7 +760,21 @@ async function loadProviders() {
     selectedProviderId = (providers.find(p => p.current) || {}).id || null;
   }
   renderProviders();
+  renderRouteProviderOptions();
   refreshStatus();
+}
+function renderRouteProviderOptions() {
+  const select = document.getElementById('route-provider');
+  if (!select) return;
+  const previous = select.value;
+  select.innerHTML = providers.map(p =>
+    `<option value="${esc(p.id)}">${esc(p.name)} · ${esc(p.model||'未设置模型')}</option>`
+  ).join('');
+  if (providers.some(p => p.id === previous)) select.value = previous;
+  else {
+    const current = providers.find(p => p.current);
+    if (current) select.value = current.id;
+  }
 }
 function renderProviders() {
   const list = document.getElementById('provider-list');
@@ -922,16 +1010,19 @@ async function saveProvider() {
 
 /* ---------- 会话 ---------- */
 let checkedSessions = new Set();
+let checkedRoutes = new Set();
 let archivedSessions = [];
 let checkedArchived = new Set();
 async function loadSessions() {
   sessions = await api('get_sessions') || [];
   archivedSessions = await api('get_archived_sessions') || [];
   checkedSessions = new Set([...checkedSessions].filter(id => sessions.some(s => s.id === id)));
+  checkedRoutes = new Set([...checkedRoutes].filter(id => sessions.some(s => s.id === id)));
   checkedArchived = new Set([...checkedArchived].filter(id => archivedSessions.some(s => s.id === id)));
   renderSessionList();
 }
 function renderSessionList() {
+  renderRouteList();
   const alist = document.getElementById('archive-list');
   if (!sessions.length) {
     alist.innerHTML = '<div class="empty">没有未归档的会话</div>';
@@ -958,6 +1049,62 @@ function renderSessionList() {
   document.getElementById('archived-count').textContent = archivedSessions.length;
   document.getElementById('active-selected').textContent = `已选 ${checkedSessions.size} 个`;
   document.getElementById('archived-selected').textContent = `已选 ${checkedArchived.size} 个`;
+}
+function renderRouteList() {
+  const list = document.getElementById('route-list');
+  if (!list) return;
+  if (!sessions.length) {
+    list.innerHTML = '<div class="empty">没有可设置的活跃会话</div>';
+  } else {
+    list.innerHTML = sessions.map(s => {
+      const mode = ['follow','fixed','same'].includes(s.route_mode) ? s.route_mode : 'same';
+      const mismatch = s.model_mismatch
+        ? '<span class="route-tag bad" title="当前模型与通道配置不一致">模型残留</span>' : '';
+      return `
+        <div class="route-item ${checkedRoutes.has(s.id)?'checked':''}" onclick="toggleRoute('${s.id}')">
+          <div class="cb">✓</div>
+          <div class="route-main">
+            <div class="route-title">${esc(s.title||'未命名会话')}</div>
+            <div class="route-meta">
+              <span class="route-tag ${mode}">${esc(s.route_label||'与默认一致')}</span>
+              <span class="route-model">${esc(s.model||'未记录模型')}</span>
+              ${mismatch}
+            </div>
+          </div>
+          <span class="route-provider">${esc(s.provider_name||s.provider)}</span>
+        </div>`;
+    }).join('');
+  }
+  document.getElementById('route-count').textContent = sessions.length;
+  document.getElementById('route-selected').textContent = `已选 ${checkedRoutes.size} 个会话`;
+  document.getElementById('btn-route-fixed').disabled = !checkedRoutes.size;
+  document.getElementById('btn-route-follow').disabled = !checkedRoutes.size;
+}
+function toggleRoute(id) {
+  if (checkedRoutes.has(id)) checkedRoutes.delete(id); else checkedRoutes.add(id);
+  renderRouteList();
+}
+async function doFixRoute() {
+  if (!checkedRoutes.size) return toast('请先勾选会话', 'err');
+  const pid = document.getElementById('route-provider').value;
+  const provider = providers.find(p => p.id === pid);
+  if (!provider) return toast('请选择目标通道', 'err');
+  if (!confirm(`将 ${checkedRoutes.size} 个会话固定到「${provider.name}」？\n\n请先完全退出 Codex（含托盘）。操作将使用官方会话接口，并自动备份。`)) return;
+  const r = await api('switch_sessions', [...checkedRoutes], pid);
+  if (!r || !r.ok) return toast(r ? r.error : '会话通道切换失败', 'err');
+  toast(`已固定 ${r.count} 个会话到「${provider.name}」`, 'ok');
+  checkedRoutes.clear();
+  await loadSessions();
+}
+async function doFollowRoute() {
+  if (!checkedRoutes.size) return toast('请先勾选会话', 'err');
+  if (!confirm(`让 ${checkedRoutes.size} 个会话改为跟随全局默认通道？\n\n本次会先同步到当前全局通道，以后切换全局时继续自动同步。请先完全退出 Codex（含托盘）。`)) return;
+  const r = await api('follow_sessions', [...checkedRoutes]);
+  if (!r || !r.ok) return toast(r ? r.error : '设置跟随全局失败', 'err');
+  const provider = providers.find(p => p.id === r.provider);
+  toast(`已设置 ${r.count} 个跟随会话` + (provider ? `，当前同步到「${provider.name}」` : ''), 'ok');
+  checkedRoutes.clear();
+  await loadSessions();
 }
 function toggleSession(id) {
   if (checkedSessions.has(id)) checkedSessions.delete(id); else checkedSessions.add(id);
