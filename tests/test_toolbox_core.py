@@ -30,9 +30,13 @@ class ToolboxCoreTests(unittest.TestCase):
 
         conn = sqlite3.connect(state)
         conn.execute(
-            "CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT, archived INTEGER, archived_at INTEGER)"
+            "CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT, archived INTEGER, "
+            "archived_at INTEGER, title TEXT, model_provider TEXT, model TEXT, reasoning_effort TEXT)"
         )
-        conn.execute("INSERT INTO threads VALUES (?, ?, 0, NULL)", ("thread-archive", stored_path))
+        conn.execute(
+            "INSERT INTO threads VALUES (?, ?, 0, NULL, '归档测试', 'openai', 'gpt-old', 'medium')",
+            ("thread-archive", stored_path),
+        )
         conn.execute(
             "CREATE TABLE thread_spawn_edges (parent_thread_id TEXT, child_thread_id TEXT, status TEXT)"
         )
@@ -57,7 +61,7 @@ class ToolboxCoreTests(unittest.TestCase):
         conn = sqlite3.connect(state)
         conn.execute(
             "CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT, archived INTEGER, "
-            "model_provider TEXT, model TEXT)"
+            "model_provider TEXT, model TEXT, reasoning_effort TEXT)"
         )
         rollouts = {}
         for tid in thread_ids:
@@ -67,7 +71,7 @@ class ToolboxCoreTests(unittest.TestCase):
                 encoding="utf-8",
             )
             conn.execute(
-                "INSERT INTO threads VALUES (?, ?, 0, 'openai', 'gpt-old')",
+                "INSERT INTO threads VALUES (?, ?, 0, 'openai', 'gpt-old', 'medium')",
                 (tid, rollout),
             )
             rollouts[tid] = rollout
@@ -102,6 +106,29 @@ class ToolboxCoreTests(unittest.TestCase):
         p = core.normalize_provider({"id": "relay", "api_key": "secret", "base_url": "https://example.test/v1"})
         self.assertEqual(p["api_key"], "secret")
 
+    def test_apply_provider_writes_configured_reasoning_effort(self):
+        with tempfile.TemporaryDirectory() as td:
+            config = os.path.join(td, "config.toml")
+            backup = os.path.join(td, "backups")
+            Path(config).write_text(
+                'model_provider = "openai"\nmodel = "gpt-old"\nmodel_reasoning_effort = "medium"\n',
+                encoding="utf-8",
+            )
+            providers = [{
+                "id": "qwen", "name": "千问", "model": "qwen-test",
+                "reasoning_effort": "high", "base_url": "https://example.test/v1",
+                "wire_api": "responses",
+            }]
+            with mock.patch.object(core, "CONFIG", config), \
+                 mock.patch.object(core, "BAK_DIR", backup), \
+                 mock.patch.object(core, "load_providers", return_value=providers), \
+                 mock.patch.object(core, "_auth_helper_command", return_value=("helper.exe", [])):
+                core.apply_provider("qwen")
+            updated = Path(config).read_text(encoding="utf-8")
+            self.assertIn('model_provider = "qwen"', updated)
+            self.assertIn('model = "qwen-test"', updated)
+            self.assertIn('model_reasoning_effort = "high"', updated)
+
     def test_thread_route_modes_are_persisted(self):
         with tempfile.TemporaryDirectory() as td:
             routes_file = os.path.join(td, "thread_routes.json")
@@ -120,7 +147,8 @@ class ToolboxCoreTests(unittest.TestCase):
             original_rollout = Path(rollouts["thread-route"]).read_bytes()
             providers = [
                 {"id": "openai", "name": "官方", "model": "gpt-old"},
-                {"id": "qwen", "name": "千问", "model": "qwen-test"},
+                {"id": "qwen", "name": "千问", "model": "qwen-test",
+                 "reasoning_effort": "high"},
             ]
 
             class FakeAppServer:
@@ -130,20 +158,28 @@ class ToolboxCoreTests(unittest.TestCase):
                     self.executable = executable
 
                 def request(self, method, params):
-                    if method != "thread/resume":
-                        raise AssertionError(method)
                     FakeAppServer.requests.append(dict(params))
                     conn = sqlite3.connect(core.STATE_DB)
-                    with conn:
-                        conn.execute(
-                            "UPDATE threads SET model_provider=?, model=? WHERE id=?",
-                            (params["modelProvider"], params["model"], params["threadId"]),
-                        )
+                    if method == "thread/resume":
+                        with conn:
+                            conn.execute(
+                                "UPDATE threads SET model_provider=?, model=? WHERE id=?",
+                                (params["modelProvider"], params["model"], params["threadId"]),
+                            )
+                    elif method == "thread/settings/update":
+                        with conn:
+                            conn.execute(
+                                "UPDATE threads SET model=?, reasoning_effort=? WHERE id=?",
+                                (params["model"], params["effort"], params["threadId"]),
+                            )
+                    else:
+                        conn.close()
+                        raise AssertionError(method)
                     conn.close()
-                    return {
+                    return ({
                         "modelProvider": params["modelProvider"],
                         "model": params["model"],
-                    }
+                    } if method == "thread/resume" else {})
 
                 def close(self):
                     pass
@@ -158,12 +194,13 @@ class ToolboxCoreTests(unittest.TestCase):
 
             conn = sqlite3.connect(state)
             row = conn.execute(
-                "SELECT model_provider, model FROM threads WHERE id='thread-route'"
+                "SELECT model_provider, model, reasoning_effort FROM threads WHERE id='thread-route'"
             ).fetchone()
             conn.close()
-            self.assertEqual(row, ("qwen", "qwen-test"))
+            self.assertEqual(row, ("qwen", "qwen-test", "high"))
             self.assertEqual(Path(rollouts["thread-route"]).read_bytes(), original_rollout)
             self.assertEqual(FakeAppServer.requests[0]["excludeTurns"], True)
+            self.assertEqual(FakeAppServer.requests[1]["effort"], "high")
             self.assertTrue(os.path.isfile(os.path.join(
                 backup, f"thread_route_{stamp}", "state_5.sqlite"
             )))
@@ -182,14 +219,25 @@ class ToolboxCoreTests(unittest.TestCase):
                     pass
 
                 def request(self, method, params):
-                    if params["threadId"] == "thread-b" and params["modelProvider"] == "qwen":
+                    if (method == "thread/resume" and params["threadId"] == "thread-b"
+                            and params["modelProvider"] == "qwen"):
                         raise RuntimeError("模拟第二个会话切换失败")
                     conn = sqlite3.connect(core.STATE_DB)
-                    with conn:
-                        conn.execute(
-                            "UPDATE threads SET model_provider=?, model=? WHERE id=?",
-                            (params["modelProvider"], params["model"], params["threadId"]),
-                        )
+                    if method == "thread/resume":
+                        with conn:
+                            conn.execute(
+                                "UPDATE threads SET model_provider=?, model=? WHERE id=?",
+                                (params["modelProvider"], params["model"], params["threadId"]),
+                            )
+                    elif method == "thread/settings/update":
+                        with conn:
+                            conn.execute(
+                                "UPDATE threads SET model=?, reasoning_effort=? WHERE id=?",
+                                (params["model"], params["effort"], params["threadId"]),
+                            )
+                    else:
+                        conn.close()
+                        raise AssertionError(method)
                     conn.close()
                     return dict(params)
 
@@ -207,12 +255,12 @@ class ToolboxCoreTests(unittest.TestCase):
 
             conn = sqlite3.connect(state)
             rows = conn.execute(
-                "SELECT id, model_provider, model FROM threads ORDER BY id"
+                "SELECT id, model_provider, model, reasoning_effort FROM threads ORDER BY id"
             ).fetchall()
             conn.close()
             self.assertEqual(rows, [
-                ("thread-a", "openai", "gpt-old"),
-                ("thread-b", "openai", "gpt-old"),
+                ("thread-a", "openai", "gpt-old", "medium"),
+                ("thread-b", "openai", "gpt-old", "medium"),
             ])
 
     def test_provider_block_uses_command_auth_not_plaintext_token(self):

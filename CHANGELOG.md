@@ -7,4 +7,6 @@
 - Windows DPAPI 密钥存储与 Codex command auth。
 - 通过官方 app-server 归档和恢复会话，操作前自动备份。
 - 通过官方 `thread/resume` 为单个会话固定通道或设置跟随全局，并在失败时尝试恢复原通道。
+- 改为浅色界面，修复目标通道下拉框对比度和顶部代理状态双圆点。
+- 为供应商和会话路由增加思考强度设置，并同步 Codex 会话模型显示。
 - 不直接改写单会话 SQLite/JSONL，不替换 Codex 界面资源。

@@ -118,6 +118,11 @@ def read_model():
     return read_config_field("model")
 
 
+def read_reasoning_effort():
+    value = read_config_field("model_reasoning_effort")
+    return "" if value == "?" else value
+
+
 def parse_sections(content):
     sections = {}
     current = None
@@ -144,6 +149,7 @@ def normalize_provider(p):
     p = dict(p or {})
     p.setdefault("kind", "official" if p.get("id") == OFFICIAL_ID else "relay")
     p.setdefault("wire_api", "responses")
+    p.setdefault("reasoning_effort", "")
     if _is_dashscope_provider(p):
         p["kind"] = "direct"
         p["base_url"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -375,6 +381,16 @@ def apply_provider(pid, proxy_url=None):
             content = re.sub(r'^model\s*=.*$', model_line, content, count=1, flags=re.M)
         else:
             content = model_line + "\n" + content
+    # 留空表示保持用户当前的 Codex 思考强度；设置后作为该通道的默认值。
+    if p.get("reasoning_effort"):
+        effort_line = f'model_reasoning_effort = {_toml_string(p["reasoning_effort"])}'
+        if re.search(r'^model_reasoning_effort\s*=', content, re.M):
+            content = re.sub(
+                r'^model_reasoning_effort\s*=.*$', effort_line, content,
+                count=1, flags=re.M,
+            )
+        else:
+            content = effort_line + "\n" + content
     if pid != OFFICIAL_ID:
         prov_copy = dict(p)
         if p.get("proxy"):
@@ -440,7 +456,10 @@ def _friendly_titles():
 def list_unarchived():
     conn = sqlite3.connect(STATE_DB)
     cur = conn.cursor()
-    cur.execute("SELECT id, title, model_provider, model FROM threads WHERE archived = 0 ORDER BY created_at")
+    cur.execute(
+        "SELECT id, title, model_provider, model, reasoning_effort "
+        "FROM threads WHERE archived = 0 ORDER BY created_at"
+    )
     rows = cur.fetchall()
     conn.close()
     return rows, _friendly_titles()
@@ -451,7 +470,7 @@ def list_archived():
     conn = sqlite3.connect(STATE_DB)
     try:
         rows = conn.execute(
-            "SELECT id, title, model_provider, model FROM threads "
+            "SELECT id, title, model_provider, model, reasoning_effort FROM threads "
             "WHERE archived = 1 ORDER BY archived_at DESC"
         ).fetchall()
     finally:
@@ -815,7 +834,7 @@ def set_threads_provider_official(target_ids, provider_id):
     conn = sqlite3.connect(STATE_DB, timeout=15)
     try:
         rows = conn.execute(
-            f"SELECT id, rollout_path, archived, model_provider, model "
+            f"SELECT id, rollout_path, archived, model_provider, model, reasoning_effort "
             f"FROM threads WHERE id IN ({placeholders})",
             target_ids,
         ).fetchall()
@@ -829,14 +848,15 @@ def set_threads_provider_official(target_ids, provider_id):
     rollout_files = []
     originals = {}
     for tid in target_ids:
-        _, rollout_path, archived, original_provider, original_model = row_map[tid]
+        (_, rollout_path, archived, original_provider, original_model,
+         original_effort) = row_map[tid]
         if archived:
             raise RuntimeError(f"会话已归档，请先恢复：{tid}")
         normal_path = _normal_windows_path(rollout_path)
         if not normal_path or not os.path.isfile(normal_path):
             raise RuntimeError(f"会话文件不存在，已取消切换：{tid}")
         rollout_files.append(normal_path)
-        originals[tid] = (original_provider, original_model)
+        originals[tid] = (original_provider, original_model, original_effort)
 
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     operation_backup = os.path.join(BAK_DIR, f"thread_route_{stamp}")
@@ -848,6 +868,7 @@ def set_threads_provider_official(target_ids, provider_id):
         shutil.copy2(source, os.path.join(rollout_backup, os.path.basename(source)))
 
     executable = _find_codex_executable()
+    effort = provider.get("reasoning_effort") or ""
     client = None
     switched = []
     try:
@@ -866,15 +887,22 @@ def set_threads_provider_official(target_ids, provider_id):
                     raise RuntimeError(f"官方接口返回的通道不一致：{tid}")
                 if returned_model and returned_model != model:
                     raise RuntimeError(f"官方接口返回的模型不一致：{tid}")
+            if effort:
+                client.request("thread/settings/update", {
+                    "threadId": tid,
+                    "model": model,
+                    "effort": effort,
+                })
             switched.append(tid)
 
         verify = sqlite3.connect(STATE_DB, timeout=15)
         try:
             for tid in target_ids:
                 row = verify.execute(
-                    "SELECT model_provider, model FROM threads WHERE id=?", (tid,)
+                    "SELECT model_provider, model, reasoning_effort FROM threads WHERE id=?", (tid,)
                 ).fetchone()
-                if not row or row[0] != provider_id or row[1] != model:
+                if (not row or row[0] != provider_id or row[1] != model
+                        or (effort and row[2] != effort)):
                     raise RuntimeError(
                         f"官方接口未持久化会话通道，已取消：{tid}"
                     )
@@ -883,13 +911,18 @@ def set_threads_provider_official(target_ids, provider_id):
     except Exception:
         if client:
             for tid in reversed(switched):
-                original_provider, original_model = originals[tid]
+                original_provider, original_model, original_effort = originals[tid]
                 try:
                     client.request("thread/resume", {
                         "threadId": tid,
                         "modelProvider": original_provider,
                         "model": original_model,
                         "excludeTurns": True,
+                    })
+                    client.request("thread/settings/update", {
+                        "threadId": tid,
+                        "model": original_model,
+                        "effort": original_effort,
                     })
                 except Exception:
                     pass

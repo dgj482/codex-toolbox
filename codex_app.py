@@ -66,6 +66,7 @@ class Api:
             "provider": prov,
             "provider_name": names.get(prov, prov),
             "model": core.read_model(),
+            "reasoning_effort": core.read_reasoning_effort(),
             "codex_running": core.codex_running(),
             "proxy_running": self.proxy_server is not None,
             "proxy_url": self.proxy_url,
@@ -83,6 +84,7 @@ class Api:
                 "name": p["name"],
                 "kind": p.get("kind", "relay"),
                 "model": p.get("model", ""),
+                "reasoning_effort": p.get("reasoning_effort", ""),
                 "base_url": p.get("base_url", ""),
                 "proxy": bool(p.get("proxy")),
                 "wire_api": p.get("wire_api", "responses"),
@@ -105,6 +107,7 @@ class Api:
             # 编辑时留空表示保留旧 Key，后端永不把明文 Key 回传给页面。
             "api_key": data.get("api_key") or old.get("api_key", ""),
             "model": data.get("model", ""),
+            "reasoning_effort": data.get("reasoning_effort", ""),
             "wire_api": data.get("wire_api", "responses"),
             "requires_openai_auth": False,
         }
@@ -205,6 +208,7 @@ class Api:
             advice = "服务端必须原生支持 /responses；若只支持 /chat/completions，请开启本地翻译。"
         return {"ok": not issues, "name": p.get("name", pid), "route": route,
                 "base_url": p.get("base_url", ""), "model": p.get("model", ""),
+                "reasoning_effort": p.get("reasoning_effort", ""),
                 "issues": issues, "advice": advice}
 
     def test_provider_connection(self, pid):
@@ -338,7 +342,7 @@ class Api:
         out = []
         routes = core.load_thread_routes()
         current = core.read_provider()
-        for tid, title, prov, model in rows:
+        for tid, title, prov, model, effort in rows:
             saved = routes.get(tid, {}) if isinstance(routes.get(tid, {}), dict) else {}
             mode = saved.get("mode")
             if mode not in ("follow", "fixed"):
@@ -353,6 +357,7 @@ class Api:
                 "provider": prov,
                 "provider_name": names.get(prov, prov),
                 "model": model or "",
+                "reasoning_effort": effort or "",
                 "expected_model": expected_model,
                 "model_mismatch": mismatch,
                 "route_mode": mode,
@@ -411,7 +416,8 @@ class Api:
             "provider": provider,
             "provider_name": names.get(provider, provider),
             "model": model or "",
-        } for tid, title, provider, model in core.list_archived()]
+            "reasoning_effort": effort or "",
+        } for tid, title, provider, model, effort in core.list_archived()]
 
     def unarchive_sessions(self, tids):
         if core.codex_running():
