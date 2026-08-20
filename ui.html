@@ -207,76 +207,394 @@ select:focus, input:focus { border-color:var(--blue); }
 .route-tag.same { color:#9aa4b8; background:#252c38; }
 .route-tag.bad { color:#ff8b82; background:#482522; }
 .notice { color:var(--muted); line-height:1.65; }
+
+/* ===== 0.1.0-beta 视觉更新 ===== */
+:root {
+  --bg:#080b12;
+  --surface:#101520;
+  --surface-2:#151b28;
+  --surface-3:#1a2231;
+  --border:#242d3d;
+  --border-strong:#344159;
+  --text:#f4f7fb;
+  --muted:#8f9bad;
+  --muted-2:#657084;
+  --blue:#6d7cff;
+  --blue-2:#8994ff;
+  --green:#38d394;
+  --amber:#f0b35b;
+  --red:#ff7168;
+  --radius:16px;
+  --shadow:0 18px 50px rgba(0,0,0,.28);
+}
+body {
+  background:
+    radial-gradient(circle at 78% -20%, rgba(109,124,255,.14), transparent 36%),
+    radial-gradient(circle at 0 100%, rgba(56,211,148,.06), transparent 28%),
+    var(--bg);
+  letter-spacing:.01em;
+}
+button, input, select { font-family:inherit; }
+.app-shell { min-height:100vh; display:flex; overflow:hidden; }
+.sidebar {
+  width:228px; flex:0 0 228px; min-height:100vh; padding:22px 16px 18px;
+  display:flex; flex-direction:column;
+  background:rgba(13,17,26,.9); border-right:1px solid rgba(255,255,255,.07);
+  box-shadow:12px 0 40px rgba(0,0,0,.12);
+}
+.brand-lockup { display:flex; align-items:center; gap:12px; padding:0 8px 24px; }
+.logo {
+  width:40px; height:40px; border-radius:13px; position:relative; overflow:hidden;
+  background:linear-gradient(145deg,#7a86ff 0%,#5261e8 62%,#3d49b6 100%);
+  box-shadow:0 10px 25px rgba(91,105,242,.3), inset 0 1px rgba(255,255,255,.22);
+}
+.logo::after {
+  content:""; position:absolute; width:26px; height:26px; border-radius:50%;
+  border:1px solid rgba(255,255,255,.2); right:-9px; bottom:-9px;
+}
+.brand { font-size:15px; font-weight:700; line-height:1.25; letter-spacing:.02em; white-space:nowrap; }
+.brand small { display:block; margin:3px 0 0; font-size:10px; color:var(--muted-2); font-weight:600; }
+.nav-label { padding:0 10px 8px; color:var(--muted-2); font-size:10px; font-weight:700; letter-spacing:.14em; }
+.side-nav { display:flex; flex-direction:column; gap:5px; }
+.tab-btn {
+  width:100%; min-height:44px; padding:0 12px; border:1px solid transparent; border-radius:11px;
+  display:flex; align-items:center; gap:11px; color:var(--muted); background:transparent;
+  font-size:13px; font-weight:600; cursor:pointer; transition:all .18s ease;
+}
+.tab-btn .nav-icon {
+  width:28px; height:28px; border-radius:8px; display:grid; place-items:center;
+  color:var(--muted); background:transparent; transition:all .18s;
+}
+.tab-btn svg { width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:1.8; }
+.tab-btn:hover { color:var(--text); background:rgba(255,255,255,.035); }
+.tab-btn.active {
+  color:#fff; border-color:rgba(109,124,255,.2);
+  background:linear-gradient(90deg,rgba(109,124,255,.17),rgba(109,124,255,.07));
+  box-shadow:inset 3px 0 0 var(--blue);
+}
+.tab-btn.active .nav-icon { color:#cbd0ff; background:rgba(109,124,255,.16); }
+.sidebar-spacer { flex:1; }
+.security-note {
+  margin:12px 3px 0; padding:12px; border:1px solid rgba(56,211,148,.15); border-radius:12px;
+  background:rgba(56,211,148,.045); color:var(--muted); font-size:11px; line-height:1.55;
+}
+.security-note strong { display:flex; align-items:center; gap:6px; color:#a9e8d0; font-size:11px; margin-bottom:3px; }
+.security-note strong::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 10px var(--green); }
+.workspace { flex:1; min-width:0; height:100vh; display:flex; flex-direction:column; }
+.topbar {
+  min-height:98px; padding:20px 28px 18px; display:flex; align-items:center; gap:24px;
+  border-bottom:1px solid rgba(255,255,255,.065); background:rgba(8,11,18,.62);
+  backdrop-filter:blur(18px);
+}
+.page-heading { min-width:0; }
+.eyebrow { display:block; color:var(--blue-2); font-size:9px; font-weight:800; letter-spacing:.18em; margin-bottom:5px; }
+.page-heading h1 { font-size:21px; line-height:1.2; font-weight:720; letter-spacing:.01em; }
+.page-heading p { color:var(--muted); font-size:11.5px; margin-top:5px; }
+.top-status { margin-left:auto; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; }
+.badge {
+  min-height:30px; padding:0 11px; border-radius:9px; font-size:11px;
+  border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.035); color:var(--muted);
+}
+.badge .dot { width:6px; height:6px; box-shadow:0 0 0 3px rgba(255,255,255,.025); }
+main { flex:1; padding:24px 28px 30px; overflow-y:auto; }
+.panel { max-width:1120px; margin:0 auto; }
+.panel.active { animation:panelIn .25s cubic-bezier(.2,.7,.2,1); }
+@keyframes panelIn { from{opacity:0;transform:translateY(7px)} to{opacity:1;transform:none} }
+.card {
+  background:linear-gradient(145deg,rgba(18,24,36,.96),rgba(14,19,29,.96));
+  border:1px solid rgba(255,255,255,.075); border-radius:var(--radius);
+  padding:20px; margin-bottom:16px; box-shadow:0 1px 0 rgba(255,255,255,.025);
+}
+.overview-card {
+  min-height:148px; display:grid; grid-template-columns:minmax(260px,1.2fr) minmax(320px,1fr);
+  align-items:stretch; padding:0; overflow:hidden; position:relative;
+}
+.overview-card::before {
+  content:""; position:absolute; width:260px; height:260px; right:27%; top:-185px;
+  border-radius:50%; background:rgba(109,124,255,.11); filter:blur(2px); pointer-events:none;
+}
+.overview-copy { padding:24px 26px; border-right:1px solid rgba(255,255,255,.065); position:relative; }
+.section-kicker { color:var(--muted-2); font-size:9px; font-weight:800; letter-spacing:.15em; text-transform:uppercase; }
+.active-channel { display:flex; align-items:center; gap:11px; margin-top:10px; }
+.channel-orb {
+  width:34px; height:34px; border-radius:11px; flex:0 0 auto;
+  background:linear-gradient(145deg,rgba(109,124,255,.34),rgba(109,124,255,.09));
+  border:1px solid rgba(137,148,255,.3); position:relative;
+}
+.channel-orb::before,.channel-orb::after { content:""; position:absolute; border-radius:50%; background:#cdd2ff; }
+.channel-orb::before { width:7px; height:7px; left:8px; top:9px; box-shadow:11px 8px 0 rgba(205,210,255,.7); }
+.channel-orb::after { width:4px; height:4px; right:7px; top:7px; opacity:.55; }
+.active-channel .value { font-size:22px; font-weight:730; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.model-line { margin:12px 0 0 45px; display:flex; align-items:center; gap:8px; color:var(--muted); font-size:11px; }
+.model-line .model-pill { max-width:300px; padding:4px 8px; color:#c8cfdd; background:rgba(255,255,255,.045); border-radius:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.health-grid { display:grid; grid-template-columns:1fr 1fr; padding:18px; gap:10px; position:relative; }
+.health-tile {
+  min-width:0; padding:14px; border-radius:12px; background:rgba(255,255,255,.027);
+  border:1px solid rgba(255,255,255,.055); display:flex; flex-direction:column; justify-content:center;
+}
+.health-head { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:10px; margin-bottom:8px; }
+.health-icon { width:24px; height:24px; display:grid; place-items:center; border-radius:8px; background:rgba(255,255,255,.045); color:#b6bfd0; }
+.health-icon svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.8; }
+.health-tile .value { color:#e9edf5; font-size:13px; font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.section-card { padding:0; overflow:hidden; }
+.section-header { min-height:78px; padding:18px 20px; display:flex; align-items:center; gap:16px; border-bottom:1px solid rgba(255,255,255,.06); }
+.section-title { min-width:0; }
+.section-title h2 { font-size:15px; font-weight:680; margin:0; }
+.section-title p { color:var(--muted); font-size:11px; margin-top:5px; }
+.section-header .btn { margin-left:auto; }
+.section-body { padding:16px 18px; }
+.p-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.p-item {
+  min-height:94px; padding:15px; gap:12px; position:relative; align-items:flex-start;
+  background:rgba(255,255,255,.025); border-color:rgba(255,255,255,.065); border-radius:13px;
+}
+.p-item:hover { border-color:rgba(137,148,255,.32); background:rgba(255,255,255,.037); transform:translateY(-1px); }
+.p-item.selected {
+  border-color:rgba(109,124,255,.7); background:linear-gradient(145deg,rgba(109,124,255,.13),rgba(109,124,255,.045));
+  box-shadow:0 0 0 1px rgba(109,124,255,.12), 0 12px 30px rgba(0,0,0,.15);
+}
+.provider-mark {
+  width:38px; height:38px; flex:0 0 auto; border-radius:12px; display:grid; place-items:center;
+  color:#d8dcff; font-size:14px; font-weight:800; background:#252d4b;
+  border:1px solid rgba(137,148,255,.18);
+}
+.p-item[data-kind="official"] .provider-mark { color:#b9dcff; background:#17314c; border-color:#285071; }
+.p-item[data-kind="direct"] .provider-mark { color:#a6e9cd; background:#15372d; border-color:#215344; }
+.p-item[data-kind="relay"] .provider-mark { color:#f7d29e; background:#3a2d1c; border-color:#5c4427; }
+.provider-info { flex:1; min-width:0; padding-top:1px; }
+.provider-name-row { display:flex; align-items:center; gap:7px; min-width:0; }
+.p-name { flex:0 1 auto; font-size:13px; overflow:hidden; text-overflow:ellipsis; }
+.p-cur { padding:2px 6px; border-radius:6px; background:rgba(56,211,148,.1); font-size:9px; letter-spacing:.04em; }
+.provider-route { margin-top:8px; color:var(--muted); font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.provider-route strong { color:#c7cfdd; font-weight:600; }
+.kind-tag { margin-top:1px; padding:3px 7px; border-radius:6px; font-size:9px; font-weight:700; }
+.p-edit {
+  position:absolute; right:10px; bottom:10px; width:27px; height:27px; padding:0; justify-content:center;
+  opacity:.55; border-radius:8px;
+}
+.p-item:hover .p-edit,.p-item.selected .p-edit { opacity:1; }
+.selection-mark {
+  position:absolute; right:11px; top:11px; width:15px; height:15px; border:1px solid #455068; border-radius:50%;
+}
+.p-item.selected .selection-mark { border:4px solid var(--blue); background:#fff; }
+.action-bar {
+  display:flex; align-items:center; gap:8px; margin-top:14px; padding:12px 14px;
+  border-radius:12px; background:rgba(7,10,16,.48); border:1px solid rgba(255,255,255,.055);
+}
+.action-hint { margin-right:auto; color:var(--muted-2); font-size:10.5px; }
+.btn {
+  min-height:35px; padding:0 14px; border-radius:9px; font-size:11.5px; font-weight:650;
+  justify-content:center; border:1px solid transparent; transition:all .17s ease;
+}
+.btn.blue { background:linear-gradient(135deg,#7180ff,#5969ed); box-shadow:0 7px 18px rgba(89,105,237,.2); }
+.btn.green { background:linear-gradient(135deg,#42d99d,#2bb984); box-shadow:0 7px 18px rgba(43,185,132,.16); }
+.btn.red { background:rgba(255,113,104,.09); border-color:rgba(255,113,104,.2); color:#ff9b95; }
+.btn.red:hover { background:rgba(255,113,104,.16); border-color:rgba(255,113,104,.35); }
+.btn.ghost { background:rgba(255,255,255,.025); border-color:rgba(255,255,255,.08); color:#a7b1c2; }
+.btn.ghost:hover { background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.14); color:#eef2f8; }
+.btn.sm { min-height:27px; padding:0 9px; }
+.safety-banner {
+  display:flex; align-items:center; gap:12px; padding:13px 15px; margin-bottom:14px; border-radius:12px;
+  border:1px solid rgba(240,179,91,.16); background:rgba(240,179,91,.055); color:#b8a889;
+  font-size:11px; line-height:1.45;
+}
+.safety-icon { width:29px; height:29px; flex:0 0 auto; border-radius:9px; display:grid; place-items:center; background:rgba(240,179,91,.11); color:#f1bf77; font-weight:800; }
+.archive-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.archive-card { padding:0; overflow:hidden; margin:0; }
+.archive-card .section-header { min-height:72px; padding:16px 18px; }
+.count-pill { margin-left:8px; padding:2px 7px; border-radius:7px; color:var(--muted); background:rgba(255,255,255,.05); font-size:10px; font-weight:600; }
+.archive-card .section-body { padding:12px; }
+.s-list { min-height:160px; max-height:340px; overflow-y:auto; padding-right:3px; }
+.s-item { min-height:48px; padding:9px 11px; background:rgba(255,255,255,.025); border-color:rgba(255,255,255,.055); border-radius:10px; }
+.s-item:hover { background:rgba(255,255,255,.04); border-color:rgba(137,148,255,.22); }
+.s-item.checked { background:rgba(109,124,255,.1); border-color:rgba(109,124,255,.55); }
+.s-item .cb { width:17px; height:17px; border-width:1px; border-color:#455068; border-radius:5px; }
+.s-title { font-size:11.5px; color:#dce2ec; }
+.s-prov { padding:3px 6px; border-radius:6px; background:rgba(255,255,255,.04); font-size:9.5px; }
+.archive-actions { display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,.055); }
+.selected-count { margin-right:auto; color:var(--muted-2); font-size:10px; }
+.overlay { background:rgba(3,5,9,.72); backdrop-filter:blur(8px); }
+.modal {
+  width:600px; padding:0; border-radius:18px; overflow:hidden;
+  background:linear-gradient(145deg,#141a27,#0f141e); border-color:rgba(255,255,255,.11); box-shadow:0 28px 90px rgba(0,0,0,.6);
+  display:flex; flex-direction:column; max-height:calc(100vh - 48px);
+}
+.modal-header { padding:20px 22px 16px; display:flex; align-items:flex-start; border-bottom:1px solid rgba(255,255,255,.065); }
+.modal-header h2 { margin:0; font-size:17px; }
+.modal-header p { color:var(--muted); font-size:10.5px; margin-top:5px; }
+.modal-close { margin-left:auto; width:30px; height:30px; padding:0; border-radius:9px; }
+.modal-body { padding:19px 22px 5px; overflow-y:auto; min-height:0; }
+.modal-footer { padding:14px 22px 18px; display:flex; justify-content:flex-end; gap:8px; border-top:1px solid rgba(255,255,255,.06); background:rgba(8,11,17,.24); }
+.field { margin-bottom:14px; }
+.field label { margin-bottom:6px; color:#98a4b7; font-size:10.5px; font-weight:600; }
+select,input[type=text],input[type=password] {
+  min-height:39px; padding:0 11px; background:rgba(255,255,255,.035); border-color:rgba(255,255,255,.085); border-radius:10px;
+  font-size:12px; transition:border .15s,box-shadow .15s,background .15s;
+}
+select:hover,input:hover { background:rgba(255,255,255,.047); }
+select:focus,input:focus { border-color:rgba(109,124,255,.75); box-shadow:0 0 0 3px rgba(109,124,255,.1); }
+.checkbox-line { padding:11px 12px; border-radius:10px; background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.06); color:#c5ccda; }
+.model-list { border-color:rgba(255,255,255,.07); background:rgba(0,0,0,.14); border-radius:10px; }
+.model-list .chip { background:rgba(255,255,255,.045); border-color:rgba(255,255,255,.07); }
+.toast { background:#171e2b; border-color:#2a3446; border-radius:11px; box-shadow:var(--shadow); }
+.empty { padding:32px 10px; border:1px dashed rgba(255,255,255,.075); border-radius:10px; color:var(--muted-2); }
+@media (max-width:980px) {
+  .sidebar { width:196px; flex-basis:196px; }
+  .topbar { padding-left:22px; padding-right:22px; }
+  main { padding-left:22px; padding-right:22px; }
+  .overview-card { grid-template-columns:1fr; }
+  .overview-copy { border-right:0; border-bottom:1px solid rgba(255,255,255,.06); }
+  .p-list { grid-template-columns:1fr; }
+}
 </style>
 </head>
 <body>
-
-<header>
-  <div class="logo">C</div>
-  <div class="brand">Codex 工具箱<small>0.1.0-beta</small></div>
-  <div class="spacer"></div>
-  <div class="badge"><span class="dot blue"></span><span id="st-channel">加载中</span></div>
-  <div class="badge"><span class="dot gray"></span><span id="st-proc">Codex --</span></div>
-  <div class="badge"><span class="dot gray"></span><span id="st-proxy">代理 --</span></div>
-</header>
-
-<nav>
-  <div class="tab-btn active" data-tab="tab-switch">通道切换</div>
-  <div class="tab-btn" data-tab="tab-archive">会话归档</div>
-</nav>
-
-<main>
-  <!-- ============ 通道切换 ============ -->
-  <div class="panel active" id="tab-switch">
-    <div class="card">
-      <h3>当前状态</h3>
-      <div class="status-row">
-        <div class="stat"><div class="label">当前通道</div><div class="value big" id="s-provider">--</div></div>
-        <div class="stat"><div class="label">模型</div><div class="value" id="s-model">--</div></div>
-        <div class="stat"><div class="label">Codex 进程</div><div class="value" id="s-proc">--</div></div>
-        <div class="stat"><div class="label">翻译代理</div><div class="value" id="s-proxy">--</div></div>
-      </div>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand-lockup">
+      <div class="logo">C</div>
+      <div class="brand">Codex 工具箱<small>PUBLIC BETA · 0.1.0</small></div>
     </div>
+    <div class="nav-label">WORKSPACE</div>
+    <nav class="side-nav">
+      <button class="tab-btn active" data-tab="tab-switch" data-title="通道控制台" data-subtitle="管理 Codex 全局默认模型通道">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 7h11M19 7h1M4 17h1M9 17h11M15 4v6M9 14v6"/></svg></span>
+        <span>通道切换</span>
+      </button>
+      <button class="tab-btn" data-tab="tab-archive" data-title="会话管理" data-subtitle="通过 Codex 官方接口归档与恢复">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4zM3 4h18v3H3zM9 11h6"/></svg></span>
+        <span>会话归档</span>
+      </button>
+    </nav>
+    <div class="sidebar-spacer"></div>
+    <div class="security-note">
+      <strong>本地安全存储</strong>
+      API Key 由 Windows DPAPI 加密，不写入 Codex 配置和命令行。
+    </div>
+  </aside>
 
-    <div class="card">
-      <h3>全局默认通道<span class="hint">公开测试版仅管理全局默认，不直接改写单个会话数据库</span></h3>
-      <div class="p-list" id="provider-list"></div>
-      <div class="btn-row">
-        <button class="btn blue" id="btn-switch" onclick="switchSelected()">切换到选中</button>
-        <button class="btn green" onclick="openProviderModal()">添加供应商</button>
-        <button class="btn ghost" onclick="editSelected()">编辑选中</button>
-        <button class="btn ghost" onclick="diagnoseSelected()">检查配置</button>
-        <button class="btn ghost" onclick="testSelected()">测试连接</button>
-        <button class="btn red" onclick="deleteSelected()">删除选中</button>
+  <section class="workspace">
+    <header class="topbar">
+      <div class="page-heading">
+        <span class="eyebrow">CODEX TOOLBOX</span>
+        <h1 id="page-title">通道控制台</h1>
+        <p id="page-subtitle">管理 Codex 全局默认模型通道</p>
       </div>
-    </div>
-  </div>
+      <div class="top-status">
+        <div class="badge"><span class="dot blue"></span><span id="st-channel">加载中</span></div>
+        <div class="badge"><span class="dot gray"></span><span id="st-proc">Codex --</span></div>
+        <div class="badge"><span class="dot gray"></span><span id="st-proxy">代理 --</span></div>
+      </div>
+    </header>
 
-  <!-- ============ 会话归档 ============ -->
-  <div class="panel" id="tab-archive">
-    <div class="card">
-      <h3>会话归档<span class="hint">勾选 → 归档（需先完全退出 Codex；内容不删除，自动备份）</span></h3>
-      <div class="s-list" id="archive-list"></div>
-      <div class="btn-row">
-        <button class="btn red" onclick="doArchive()">归档选中会话</button>
-        <button class="btn ghost" onclick="loadSessions()">刷新列表</button>
+    <main>
+      <!-- ============ 通道切换 ============ -->
+      <div class="panel active" id="tab-switch">
+        <div class="card overview-card">
+          <div class="overview-copy">
+            <div class="section-kicker">ACTIVE CHANNEL</div>
+            <div class="active-channel">
+              <span class="channel-orb"></span>
+              <div class="value" id="s-provider">--</div>
+            </div>
+            <div class="model-line">
+              <span>当前模型</span>
+              <span class="model-pill" id="s-model">--</span>
+            </div>
+          </div>
+          <div class="health-grid">
+            <div class="health-tile">
+              <div class="health-head">
+                <span class="health-icon"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M9 9h6M8 15h8"/></svg></span>
+                CODEX 进程
+              </div>
+              <div class="value" id="s-proc">--</div>
+            </div>
+            <div class="health-tile">
+              <div class="health-head">
+                <span class="health-icon"><svg viewBox="0 0 24 24"><path d="M8 12a4 4 0 0 1 4-4h4M16 12a4 4 0 0 1-4 4H8"/><path d="M14 5l3 3-3 3M10 19l-3-3 3-3"/></svg></span>
+                本地翻译代理
+              </div>
+              <div class="value" id="s-proxy">--</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card section-card">
+          <div class="section-header">
+            <div class="section-title">
+              <h2>全局默认通道</h2>
+              <p>切换后需重启 Codex 生效；公开版不直接改写单个会话</p>
+            </div>
+            <button class="btn green" onclick="openProviderModal()">＋ 添加供应商</button>
+          </div>
+          <div class="section-body">
+            <div class="p-list" id="provider-list"></div>
+            <div class="action-bar">
+              <span class="action-hint" id="provider-action-hint">选择一个通道后可进行操作</span>
+              <button class="btn ghost" id="btn-diagnose" onclick="diagnoseSelected()">检查配置</button>
+              <button class="btn ghost" id="btn-test" onclick="testSelected()">测试连接</button>
+              <button class="btn ghost" id="btn-edit" onclick="editSelected()">编辑</button>
+              <button class="btn red" id="btn-delete" onclick="deleteSelected()">删除</button>
+              <button class="btn blue" id="btn-switch" onclick="switchSelected()">切换到选中 →</button>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-    <div class="card">
-      <h3>已归档会话<span class="hint">通过 Codex 官方恢复接口返回左侧列表</span></h3>
-      <div class="s-list" id="restore-list"></div>
-      <div class="btn-row">
-        <button class="btn green" onclick="doUnarchive()">恢复选中会话</button>
-        <button class="btn ghost" onclick="loadSessions()">刷新列表</button>
+
+      <!-- ============ 会话归档 ============ -->
+      <div class="panel" id="tab-archive">
+        <div class="safety-banner">
+          <span class="safety-icon">i</span>
+          <span>归档和恢复都调用 Codex 官方 app-server，操作前自动备份。执行操作前请完全退出 Codex（含托盘）。</span>
+        </div>
+        <div class="archive-grid">
+          <div class="card archive-card">
+            <div class="section-header">
+              <div class="section-title">
+                <h2>活跃会话 <span class="count-pill" id="active-count">0</span></h2>
+                <p>选中后移入归档列表</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <div class="s-list" id="archive-list"></div>
+              <div class="archive-actions">
+                <span class="selected-count" id="active-selected">已选 0 个</span>
+                <button class="btn ghost" onclick="loadSessions()">刷新</button>
+                <button class="btn red" onclick="doArchive()">归档选中</button>
+              </div>
+            </div>
+          </div>
+          <div class="card archive-card">
+            <div class="section-header">
+              <div class="section-title">
+                <h2>已归档 <span class="count-pill" id="archived-count">0</span></h2>
+                <p>可恢复到 Codex 左侧会话列表</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <div class="s-list" id="restore-list"></div>
+              <div class="archive-actions">
+                <span class="selected-count" id="archived-selected">已选 0 个</span>
+                <button class="btn ghost" onclick="loadSessions()">刷新</button>
+                <button class="btn green" onclick="doUnarchive()">恢复选中</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
-</main>
+    </main>
+  </section>
+</div>
 
 <!-- 供应商模态框 -->
 <div class="overlay" id="provider-modal">
   <div class="modal">
-    <h2 id="pm-title">添加供应商</h2>
+    <div class="modal-header">
+      <div><h2 id="pm-title">添加供应商</h2><p>配置会保存到当前 Windows 用户的本地数据目录</p></div>
+      <button class="btn ghost modal-close" onclick="closeProviderModal()">×</button>
+    </div>
+    <div class="modal-body">
     <div class="field">
       <label>预设模板</label>
       <select id="pm-preset"><option value="">（手动填写）</option></select>
@@ -306,9 +624,10 @@ select:focus, input:focus { border-color:var(--blue); }
     </div>
     <label class="checkbox-line"><input type="checkbox" id="pm-proxy"> 需要本地翻译（上游是 Chat Completions，如 DeepSeek 官方）</label>
     <div class="field" id="pm-upstream-field"><label>上游地址</label><input type="text" id="pm-upstream" placeholder="https://api.deepseek.com/v1"></div>
-    <div class="btn-row" style="justify-content:flex-end;margin-top:16px;">
+    </div>
+    <div class="modal-footer">
       <button class="btn ghost" onclick="closeProviderModal()">取消</button>
-      <button class="btn green" onclick="saveProvider()">保存</button>
+      <button class="btn green" onclick="saveProvider()">保存供应商</button>
     </div>
   </div>
 </div>
@@ -343,11 +662,13 @@ function toast(msg, type='') {
 async function refreshStatus() {
   const st = await api('get_status');
   if (!st) return;
-  document.getElementById('st-channel').textContent = '通道: ' + st.provider_name;
+  document.getElementById('st-channel').textContent = st.provider_name;
   document.getElementById('s-provider').textContent = st.provider_name;
   document.getElementById('s-model').textContent = st.model;
   document.getElementById('s-proc').textContent = st.codex_running ? '运行中' : '未运行';
   document.getElementById('st-proc').textContent = 'Codex ' + (st.codex_running ? '运行中' : '未运行');
+  const procDot = document.getElementById('st-proc').previousElementSibling;
+  if (procDot) procDot.className = 'dot ' + (st.codex_running ? 'green' : 'gray');
   const pd = document.getElementById('st-proxy');
   const sd = document.getElementById('s-proxy');
   pd.textContent = '代理 ' + (st.proxy_running ? '运行中' : '未启动');
@@ -361,25 +682,56 @@ function esc(v){ const d=document.createElement('div'); d.textContent=String(v??
 /* ---------- 供应商 ---------- */
 async function loadProviders() {
   providers = await api('get_providers') || [];
+  if (!selectedProviderId || !providers.some(p => p.id === selectedProviderId)) {
+    selectedProviderId = (providers.find(p => p.current) || {}).id || null;
+  }
   renderProviders();
   refreshStatus();
 }
 function renderProviders() {
   const list = document.getElementById('provider-list');
-  if (!providers.length) { list.innerHTML = '<div class="empty">暂无供应商，点「添加供应商」</div>'; return; }
+  if (!providers.length) {
+    list.innerHTML = '<div class="empty">还没有供应商，点击右上角添加</div>';
+    syncProviderActions();
+    return;
+  }
   list.innerHTML = providers.map(p => `
-    <div class="p-item ${p.id===selectedProviderId ? 'selected':''}" onclick="selectProvider('${p.id}')">
-      <div class="radio"></div>
-      <span class="kind-tag ${p.kind}">${({official:'官方',direct:'直连',relay:'中转'})[p.kind]||'中转'}</span>
-      <span class="p-name">${esc(p.name)}</span>
-      <span class="p-meta">${esc(p.model||'')}${p.proxy?' · 本地翻译':' · Responses直连'}</span>
-      ${p.current ? '<span class="p-cur">● 当前</span>' : ''}
-      <button class="btn sm ghost" onclick="event.stopPropagation();editById('${p.id}')">编辑</button>
+    <div class="p-item ${p.id===selectedProviderId ? 'selected':''}" data-provider-id="${esc(p.id)}" data-kind="${esc(p.kind)}">
+      <div class="provider-mark">${esc((p.name||p.id||'?').trim().slice(0,1).toUpperCase())}</div>
+      <div class="provider-info">
+        <div class="provider-name-row">
+          <span class="p-name">${esc(p.name)}</span>
+          <span class="kind-tag ${p.kind}">${({official:'官方',direct:'直连',relay:'中转'})[p.kind]||'中转'}</span>
+          ${p.current ? '<span class="p-cur">当前</span>' : ''}
+        </div>
+        <div class="provider-route"><strong>${esc(p.model||'未设置模型')}</strong> · ${p.proxy?'本地协议翻译':'Responses 直连'}</div>
+      </div>
+      <span class="selection-mark"></span>
+      <button class="btn sm ghost p-edit" data-edit-provider="${esc(p.id)}" title="编辑供应商">✎</button>
     </div>`).join('');
+  list.querySelectorAll('.p-item').forEach(item => {
+    item.addEventListener('click', () => selectProvider(item.dataset.providerId));
+  });
+  list.querySelectorAll('[data-edit-provider]').forEach(button => {
+    button.addEventListener('click', event => {
+      event.stopPropagation();
+      editById(button.dataset.editProvider);
+    });
+  });
+  syncProviderActions();
 }
 function selectProvider(id) {
   selectedProviderId = id;
   renderProviders();
+}
+function syncProviderActions() {
+  const selected = providers.find(p => p.id === selectedProviderId);
+  const ids = ['btn-switch','btn-diagnose','btn-test','btn-edit','btn-delete'];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = !selected; });
+  const del = document.getElementById('btn-delete');
+  if (del) del.disabled = !selected || selected.id === 'openai';
+  const hint = document.getElementById('provider-action-hint');
+  if (hint) hint.textContent = selected ? `已选：${selected.name}` : '选择一个通道后可进行操作';
 }
 async function switchSelected() {
   if (!selectedProviderId) return toast('请先选择供应商', 'err');
@@ -520,6 +872,12 @@ function openProviderModal(p) {
 function closeProviderModal() {
   document.getElementById('provider-modal').classList.remove('show');
 }
+document.getElementById('provider-modal').addEventListener('click', event => {
+  if (event.target.id === 'provider-modal') closeProviderModal();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closeProviderModal();
+});
 document.getElementById('pm-preset').addEventListener('change', e => {
   const p = window._presetData.find(x => x.label === e.target.value);
   if (!p) return;
@@ -569,6 +927,8 @@ let checkedArchived = new Set();
 async function loadSessions() {
   sessions = await api('get_sessions') || [];
   archivedSessions = await api('get_archived_sessions') || [];
+  checkedSessions = new Set([...checkedSessions].filter(id => sessions.some(s => s.id === id)));
+  checkedArchived = new Set([...checkedArchived].filter(id => archivedSessions.some(s => s.id === id)));
   renderSessionList();
 }
 function renderSessionList() {
@@ -594,6 +954,10 @@ function renderSessionList() {
         <span class="s-prov">${esc(s.provider_name)}</span>
       </div>`).join('');
   }
+  document.getElementById('active-count').textContent = sessions.length;
+  document.getElementById('archived-count').textContent = archivedSessions.length;
+  document.getElementById('active-selected').textContent = `已选 ${checkedSessions.size} 个`;
+  document.getElementById('archived-selected').textContent = `已选 ${checkedArchived.size} 个`;
 }
 function toggleSession(id) {
   if (checkedSessions.has(id)) checkedSessions.delete(id); else checkedSessions.add(id);
@@ -629,6 +993,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(btn.dataset.tab).classList.add('active');
+    document.getElementById('page-title').textContent = btn.dataset.title;
+    document.getElementById('page-subtitle').textContent = btn.dataset.subtitle;
   });
 });
 

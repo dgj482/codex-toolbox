@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Codex 工具箱视觉预览</title>
+  <style>html,body,iframe{width:100%;height:100%;margin:0;border:0;overflow:hidden;background:#080b12}</style>
+</head>
+<body>
+<iframe id="preview" src="../ui.html"></iframe>
+<script>
+const providers = [
+  {id:'openai',name:'官方 ChatGPT Plus',kind:'official',model:'gpt-5.6-terra',proxy:false,current:false},
+  {id:'qwen',name:'通义千问',kind:'direct',model:'qwen3.8-max',proxy:false,current:true},
+  {id:'deepseek',name:'DeepSeek 官方',kind:'direct',model:'deepseek-v4-pro',proxy:true,current:false},
+  {id:'relay',name:'硅基流动',kind:'relay',model:'DeepSeek-V4',proxy:true,current:false},
+];
+document.getElementById('preview').addEventListener('load', event => {
+  const target = event.target.contentWindow;
+  target.pywebview = {api:{
+    get_presets: async()=>({presets:[]}),
+    get_providers: async()=>providers,
+    get_status: async()=>({provider:'qwen',provider_name:'通义千问',model:'qwen3.8-max',codex_running:true,proxy_running:false,proxy_url:''}),
+    get_sessions: async()=>[
+      {id:'1',title:'帮我看看千问会话为什么无法响应',provider_name:'通义千问'},
+      {id:'2',title:'Codex 工具箱公开发布优化',provider_name:'官方 ChatGPT Plus'},
+      {id:'3',title:'归档功能验证与恢复测试',provider_name:'官方 ChatGPT Plus'},
+    ],
+    get_archived_sessions: async()=>[
+      {id:'4',title:'旧版代理连接测试',provider_name:'通义千问'},
+    ],
+  }};
+  target.dispatchEvent(new target.Event('pywebviewready'));
+  if (location.hash === '#archive') {
+    setTimeout(() => target.document.querySelector('[data-tab="tab-archive"]').click(), 80);
+  }
+  if (location.hash === '#modal') {
+    setTimeout(() => target.openProviderModal(), 80);
+  }
+});
+</script>
+</body>
+</html>

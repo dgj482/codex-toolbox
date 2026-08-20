@@ -30,3 +30,5 @@ archive_backups/
 .vscode/
 .DS_Store
 Thumbs.db
+tests/ui_preview*.png
+tests/edge-preview-profile*/
