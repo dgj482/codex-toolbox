@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Codex 工具箱</title>
+<style>
+:root {
+  --bg: #0e1116;
+  --card: #161b22;
+  --card2: #1c222c;
+  --border: #2a3040;
+  --text: #e6e9ef;
+  --muted: #8b94a7;
+  --blue: #4f8cff;
+  --green: #2fbf71;
+  --amber: #e8a33d;
+  --red: #f2574a;
+  --radius: 12px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  font-size: 14px; height: 100vh; display:flex; flex-direction:column;
+  overflow: hidden; user-select: none;
+}
+::-webkit-scrollbar { width:8px; }
+::-webkit-scrollbar-thumb { background:#333c4e; border-radius:4px; }
+::-webkit-scrollbar-track { background:transparent; }
+
+/* 顶部 */
+header {
+  display:flex; align-items:center; gap:14px; padding:14px 22px;
+  border-bottom:1px solid var(--border); background:var(--card);
+}
+.logo {
+  width:36px; height:36px; border-radius:10px; flex-shrink:0;
+  background:linear-gradient(135deg,#4f8cff,#2f6bdb);
+  display:flex; align-items:center; justify-content:center;
+  font-weight:700; font-size:18px; color:#fff;
+}
+.brand { font-size:17px; font-weight:600; }
+.brand small { color:var(--muted); font-weight:400; font-size:12px; margin-left:6px; }
+.spacer { flex:1; }
+.badge {
+  padding:5px 12px; border-radius:20px; font-size:12px;
+  border:1px solid var(--border); background:var(--card2); color:var(--muted);
+  display:flex; align-items:center; gap:6px;
+}
+.badge .dot { width:7px; height:7px; border-radius:50%; display:inline-block; }
+.dot.green { background:var(--green); }
+.dot.gray { background:#555f70; }
+.dot.blue { background:var(--blue); }
+
+/* 导航 */
+nav { display:flex; gap:6px; padding:12px 22px 0; }
+.tab-btn {
+  padding:8px 18px; border-radius:10px 10px 0 0; cursor:pointer;
+  color:var(--muted); font-size:13.5px; border:1px solid transparent;
+  border-bottom:none; transition:all .15s; background:transparent;
+}
+.tab-btn:hover { color:var(--text); }
+.tab-btn.active {
+  background:var(--card2); color:var(--text); border-color:var(--border);
+  font-weight:600;
+}
+
+/* 主区 */
+main { flex:1; overflow-y:auto; padding:16px 22px 24px; }
+.panel { display:none; }
+.panel.active { display:block; animation:fadeIn .18s ease; }
+@keyframes fadeIn { from{opacity:0; transform:translateY(4px);} to{opacity:1;} }
+
+/* 卡片 */
+.card {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:16px 18px; margin-bottom:14px;
+}
+.card h3 { font-size:14px; font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+.card h3 .hint { font-size:11.5px; color:var(--muted); font-weight:400; }
+
+/* 状态行 */
+.status-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.stat {
+  flex:1; min-width:140px; background:var(--card2); border:1px solid var(--border);
+  border-radius:10px; padding:12px 14px;
+}
+.stat .label { font-size:11.5px; color:var(--muted); margin-bottom:4px; }
+.stat .value { font-size:15px; font-weight:600; }
+.stat .value.big { font-size:17px; }
+
+/* 按钮 */
+.btn {
+  border:none; border-radius:9px; padding:8px 16px; cursor:pointer;
+  font-size:13px; font-weight:600; color:#fff; transition:all .15s;
+  display:inline-flex; align-items:center; gap:6px;
+}
+.btn:hover { filter:brightness(1.12); transform:translateY(-1px); }
+.btn:active { transform:translateY(0); }
+.btn:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+.btn.blue { background:var(--blue); }
+.btn.green { background:var(--green); }
+.btn.amber { background:var(--amber); color:#1a1405; }
+.btn.red { background:var(--red); }
+.btn.ghost { background:transparent; color:var(--muted); border:1px solid var(--border); }
+.btn.ghost:hover { color:var(--text); border-color:#3a4458; }
+.btn.sm { padding:4px 10px; font-size:12px; border-radius:7px; }
+.btn-row { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; align-items:center; }
+
+/* 供应商列表 */
+.p-list { display:flex; flex-direction:column; gap:8px; }
+.p-item {
+  display:flex; align-items:center; gap:12px; padding:11px 14px;
+  background:var(--card2); border:1px solid var(--border); border-radius:10px;
+  cursor:pointer; transition:all .12s;
+}
+.p-item:hover { border-color:#3a4458; }
+.p-item.selected { border-color:var(--blue); background:#1a2233; }
+.p-item .radio { width:16px; height:16px; border-radius:50%; border:2px solid #4a5468; flex-shrink:0; }
+.p-item.selected .radio { border-color:var(--blue); }
+.p-item.selected .radio::after {
+  content:""; display:block; width:8px; height:8px; border-radius:50%;
+  background:var(--blue); margin:2px auto;
+}
+.p-name { font-weight:600; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.p-meta { font-size:12px; color:var(--muted); flex-shrink:0; }
+.kind-tag {
+  font-size:11px; padding:2px 8px; border-radius:10px; flex-shrink:0;
+}
+.kind-tag.official { background:#1a2b4a; color:#6ea8ff; }
+.kind-tag.direct { background:#16291e; color:#46d286; }
+.kind-tag.relay { background:#2b2416; color:#e8b45a; }
+.p-cur { font-size:11px; color:var(--green); flex-shrink:0; font-weight:600; }
+
+/* 会话列表 */
+.s-list { display:flex; flex-direction:column; gap:6px; }
+.s-item {
+  display:flex; align-items:center; gap:10px; padding:8px 12px;
+  background:var(--card2); border:1px solid var(--border); border-radius:8px;
+  cursor:pointer; transition:all .1s;
+}
+.s-item:hover { border-color:#3a4458; }
+.s-item.checked { border-color:var(--blue); background:#1a2233; }
+.s-item .cb {
+  width:16px; height:16px; border-radius:4px; border:2px solid #4a5468; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:11px; color:transparent;
+}
+.s-item.checked .cb { background:var(--blue); border-color:var(--blue); color:#fff; }
+.s-title { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; }
+.s-prov { font-size:11px; color:var(--muted); flex-shrink:0; }
+
+select, input[type=text], input[type=password] {
+  background:var(--card2); border:1px solid var(--border); border-radius:8px;
+  color:var(--text); padding:8px 12px; font-size:13px; outline:none; width:100%;
+}
+select:focus, input:focus { border-color:var(--blue); }
+.field { margin-bottom:12px; }
+.field label { display:block; font-size:12px; color:var(--muted); margin-bottom:5px; }
+.row2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+/* 模态框 */
+.overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+  align-items:center; justify-content:center; z-index:100;
+}
+.overlay.show { display:flex; }
+.modal {
+  width:520px; max-width:92vw; max-height:88vh; overflow-y:auto;
+  background:var(--card); border:1px solid var(--border); border-radius:14px;
+  padding:22px 24px; box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+.modal h2 { font-size:16px; margin-bottom:16px; }
+.checkbox-line { display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:10px; cursor:pointer; }
+.checkbox-line input { width:15px; height:15px; }
+
+/* toast */
+.toast-wrap { position:fixed; top:18px; right:18px; z-index:200; display:flex; flex-direction:column; gap:8px; }
+.toast {
+  background:var(--card2); border:1px solid var(--border); border-left:3px solid var(--blue);
+  border-radius:8px; padding:10px 16px; font-size:13px; min-width:220px; max-width:360px;
+  box-shadow:0 8px 30px rgba(0,0,0,.4); animation:slideIn .2s ease;
+}
+.toast.ok { border-left-color:var(--green); }
+.toast.err { border-left-color:var(--red); }
+@keyframes slideIn { from{opacity:0; transform:translateX(20px);} to{opacity:1;} }
+
+.muted { color:var(--muted); font-size:12px; }
+.empty { color:var(--muted); text-align:center; padding:24px 0; font-size:13px; }
+
+/* 模型选择列表（可滚动可点击） */
+.model-list {
+  display:flex; flex-wrap:wrap; gap:6px; max-height:160px; overflow-y:auto;
+  padding:8px; background:var(--card2); border:1px solid var(--border); border-radius:8px;
+  margin-top:6px;
+}
+.model-list .chip {
+  padding:4px 10px; border-radius:14px; font-size:12px; cursor:pointer;
+  background:#21283a; color:var(--text); border:1px solid var(--border);
+  transition:all .1s; white-space:nowrap;
+}
+.model-list .chip:hover { background:var(--blue); border-color:var(--blue); }
+.model-list .chip.current { background:var(--blue); border-color:var(--blue); }
+.model-list .empty-tip { color:var(--muted); font-size:12px; padding:4px 8px; }
+.route-tag { font-size:11px; padding:3px 8px; border-radius:12px; white-space:nowrap; }
+.route-tag.follow { color:#8db5ff; background:#203252; }
+.route-tag.fixed { color:#f5c16c; background:#43351c; }
+.route-tag.same { color:#9aa4b8; background:#252c38; }
+.route-tag.bad { color:#ff8b82; background:#482522; }
+.notice { color:var(--muted); line-height:1.65; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">C</div>
+  <div class="brand">Codex 工具箱<small>0.1.0-beta</small></div>
+  <div class="spacer"></div>
+  <div class="badge"><span class="dot blue"></span><span id="st-channel">加载中</span></div>
+  <div class="badge"><span class="dot gray"></span><span id="st-proc">Codex --</span></div>
+  <div class="badge"><span class="dot gray"></span><span id="st-proxy">代理 --</span></div>
+</header>
+
+<nav>
+  <div class="tab-btn active" data-tab="tab-switch">通道切换</div>
+  <div class="tab-btn" data-tab="tab-archive">会话归档</div>
+</nav>
+
+<main>
+  <!-- ============ 通道切换 ============ -->
+  <div class="panel active" id="tab-switch">
+    <div class="card">
+      <h3>当前状态</h3>
+      <div class="status-row">
+        <div class="stat"><div class="label">当前通道</div><div class="value big" id="s-provider">--</div></div>
+        <div class="stat"><div class="label">模型</div><div class="value" id="s-model">--</div></div>
+        <div class="stat"><div class="label">Codex 进程</div><div class="value" id="s-proc">--</div></div>
+        <div class="stat"><div class="label">翻译代理</div><div class="value" id="s-proxy">--</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>全局默认通道<span class="hint">公开测试版仅管理全局默认，不直接改写单个会话数据库</span></h3>
+      <div class="p-list" id="provider-list"></div>
+      <div class="btn-row">
+        <button class="btn blue" id="btn-switch" onclick="switchSelected()">切换到选中</button>
+        <button class="btn green" onclick="openProviderModal()">添加供应商</button>
+        <button class="btn ghost" onclick="editSelected()">编辑选中</button>
+        <button class="btn ghost" onclick="diagnoseSelected()">检查配置</button>
+        <button class="btn ghost" onclick="testSelected()">测试连接</button>
+        <button class="btn red" onclick="deleteSelected()">删除选中</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 会话归档 ============ -->
+  <div class="panel" id="tab-archive">
+    <div class="card">
+      <h3>会话归档<span class="hint">勾选 → 归档（需先完全退出 Codex；内容不删除，自动备份）</span></h3>
+      <div class="s-list" id="archive-list"></div>
+      <div class="btn-row">
+        <button class="btn red" onclick="doArchive()">归档选中会话</button>
+        <button class="btn ghost" onclick="loadSessions()">刷新列表</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>已归档会话<span class="hint">通过 Codex 官方恢复接口返回左侧列表</span></h3>
+      <div class="s-list" id="restore-list"></div>
+      <div class="btn-row">
+        <button class="btn green" onclick="doUnarchive()">恢复选中会话</button>
+        <button class="btn ghost" onclick="loadSessions()">刷新列表</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- 供应商模态框 -->
+<div class="overlay" id="provider-modal">
+  <div class="modal">
+    <h2 id="pm-title">添加供应商</h2>
+    <div class="field">
+      <label>预设模板</label>
+      <select id="pm-preset"><option value="">（手动填写）</option></select>
+    </div>
+    <div class="row2">
+      <div class="field"><label>类型</label>
+        <select id="pm-kind">
+          <option value="direct">直连（官方 API）</option>
+          <option value="relay">中转（第三方服务商）</option>
+          <option value="official">官方（ChatGPT Plus）</option>
+        </select>
+      </div>
+      <div class="field"><label>名称 *</label><input type="text" id="pm-name"></div>
+    </div>
+    <div class="field"><label>Base URL</label><input type="text" id="pm-url" placeholder="https://api.example.com/v1"></div>
+    <div class="field"><label>API Key</label><input type="password" id="pm-key" placeholder="编辑时留空表示保留原 Key"></div>
+    <div class="field"><label style="display:flex;align-items:center;justify-content:space-between;">
+      <span>模型</span>
+      <button class="btn sm ghost" onclick="fetchModels()" type="button">获取模型</button>
+    </label>
+      <input type="text" id="pm-model" placeholder="可直接输入，或点下方列表选择" style="width:100%;">
+      <div id="model-list" class="model-list"></div>
+      <div class="muted" style="margin-top:4px;">「获取模型」从该 API 拉取真实可用模型（需先填好 Base URL 和 Key）</div>
+    </div>
+    <div class="field"><label>协议</label>
+      <select id="pm-wire"><option value="responses">responses</option><option value="chat">chat</option></select>
+    </div>
+    <label class="checkbox-line"><input type="checkbox" id="pm-proxy"> 需要本地翻译（上游是 Chat Completions，如 DeepSeek 官方）</label>
+    <div class="field" id="pm-upstream-field"><label>上游地址</label><input type="text" id="pm-upstream" placeholder="https://api.deepseek.com/v1"></div>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:16px;">
+      <button class="btn ghost" onclick="closeProviderModal()">取消</button>
+      <button class="btn green" onclick="saveProvider()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+let providers = [];
+let sessions = [];
+let selectedProviderId = null;
+let editingProvider = null;
+const PRESET_MODELS = {};
+
+async function api(method, ...args) {
+  try {
+    return await window.pywebview.api[method](...args);
+  } catch (e) {
+    toast('调用失败: ' + e, 'err');
+    return null;
+  }
+}
+
+function toast(msg, type='') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+/* ---------- 状态 ---------- */
+async function refreshStatus() {
+  const st = await api('get_status');
+  if (!st) return;
+  document.getElementById('st-channel').textContent = '通道: ' + st.provider_name;
+  document.getElementById('s-provider').textContent = st.provider_name;
+  document.getElementById('s-model').textContent = st.model;
+  document.getElementById('s-proc').textContent = st.codex_running ? '运行中' : '未运行';
+  document.getElementById('st-proc').textContent = 'Codex ' + (st.codex_running ? '运行中' : '未运行');
+  const pd = document.getElementById('st-proxy');
+  const sd = document.getElementById('s-proxy');
+  pd.textContent = '代理 ' + (st.proxy_running ? '运行中' : '未启动');
+  sd.textContent = st.proxy_running ? ('运行中 (' + (st.proxy_url || '本地端口') + ')') : '未启动';
+  pd.querySelector('.dot') || pd.prepend(dot(st.proxy_running ? 'green' : 'gray'));
+  pd.querySelectorAll('.dot').forEach(d => d.className = 'dot ' + (st.proxy_running ? 'green' : 'gray'));
+}
+function dot(color){ const s=document.createElement('span'); s.className='dot '+color; return s; }
+function esc(v){ const d=document.createElement('div'); d.textContent=String(v??''); return d.innerHTML; }
+
+/* ---------- 供应商 ---------- */
+async function loadProviders() {
+  providers = await api('get_providers') || [];
+  renderProviders();
+  refreshStatus();
+}
+function renderProviders() {
+  const list = document.getElementById('provider-list');
+  if (!providers.length) { list.innerHTML = '<div class="empty">暂无供应商，点「添加供应商」</div>'; return; }
+  list.innerHTML = providers.map(p => `
+    <div class="p-item ${p.id===selectedProviderId ? 'selected':''}" onclick="selectProvider('${p.id}')">
+      <div class="radio"></div>
+      <span class="kind-tag ${p.kind}">${({official:'官方',direct:'直连',relay:'中转'})[p.kind]||'中转'}</span>
+      <span class="p-name">${esc(p.name)}</span>
+      <span class="p-meta">${esc(p.model||'')}${p.proxy?' · 本地翻译':' · Responses直连'}</span>
+      ${p.current ? '<span class="p-cur">● 当前</span>' : ''}
+      <button class="btn sm ghost" onclick="event.stopPropagation();editById('${p.id}')">编辑</button>
+    </div>`).join('');
+}
+function selectProvider(id) {
+  selectedProviderId = id;
+  renderProviders();
+}
+async function switchSelected() {
+  if (!selectedProviderId) return toast('请先选择供应商', 'err');
+  const r = await api('switch_provider', selectedProviderId);
+  if (!r || !r.ok) return toast(r ? r.error : '切换失败', 'err');
+  toast(`已切换到【${r.name}】` + (r.followed ? `，同步 ${r.followed} 个跟随会话` : '') + '；重启 Codex 生效', 'ok');
+  await loadProviders();
+  await loadSessions();  // 切换后自动刷新会话列表
+}
+async function diagnoseSelected() {
+  if (!selectedProviderId) return toast('请先选择供应商', 'err');
+  const r = await api('diagnose_provider', selectedProviderId);
+  if (!r) return;
+  const problems = (r.issues||[]).length ? `\n\n发现问题：\n- ${r.issues.join('\n- ')}` : '\n\n未发现配置问题。';
+  alert(`【${r.name}】\n路由：${r.route}\n模型：${r.model||'未设置'}\n地址：${r.base_url||'Codex 官方登录'}${problems}\n\n${r.advice}`);
+}
+async function testSelected() {
+  if (!selectedProviderId) return toast('请先选择供应商', 'err');
+  toast('正在测试连接和 API Key…');
+  const r = await api('test_provider_connection', selectedProviderId);
+  if (!r || !r.ok) return toast(r ? r.error : '连接失败', 'err');
+  toast(r.message, 'ok');
+}
+async function editSelected() {
+  let p = providers.find(x => x.id === selectedProviderId);
+  if (!p) p = providers.find(x => x.current);  // 没选中时自动用当前供应商
+  if (!p) return toast('请先选择供应商', 'err');
+  openProviderModal(p);
+}
+function editById(id) {
+  const p = providers.find(x => x.id === id);
+  if (p) openProviderModal(p);
+}
+async function fetchModels() {
+  const url = document.getElementById('pm-url').value.trim();
+  const key = document.getElementById('pm-key').value.trim();
+  if (!url || !key) return toast('请先填 Base URL 和 API Key', 'err');
+  toast('正在获取模型列表…');
+  const r = await api('get_models', url, key);
+  if (!r || !r.ok) return toast(r ? ('获取失败: ' + r.error) : '获取失败', 'err');
+  // 智能筛选：优先用预设列表 ∩ API 真实；否则按供应商名称关键词识别厂商
+  const presetLabel = document.getElementById('pm-preset').value;
+  const preset = window._presetData && window._presetData.find(x => x.label === presetLabel);
+  let models = r.models;
+  let note = '';
+  if (preset && preset.models && preset.models.length) {
+    const presetSet = new Set(preset.models);
+    const filtered = r.models.filter(m => presetSet.has(m));
+    if (filtered.length) {
+      models = filtered;
+      note = `已筛选【${presetLabel}】真实可调 ${filtered.length} 个`;
+    } else {
+      models = preset.models;
+      note = `API 返回的都不在预设列表（可能改名/下架），使用预设固定列表 ${models.length} 个`;
+    }
+  } else {
+    // 按供应商名称识别厂商（编辑已有供应商时预设禁用，这里兜底），用预设的精简前沿列表
+    const name = (document.getElementById('pm-name').value || '').toLowerCase();
+    let presetMatch = null;
+    if (name.includes('千问') || name.includes('qwen') || name.includes('通义')) presetMatch = (window._presetData||[]).find(x => x.label.includes('通义千问'));
+    else if (name.includes('glm') || name.includes('智谱')) presetMatch = (window._presetData||[]).find(x => x.label.includes('GLM'));
+    else if (name.includes('kimi') || name.includes('月之暗面') || name.includes('moonshot')) presetMatch = (window._presetData||[]).find(x => x.label.includes('Kimi'));
+    else if (name.includes('deepseek') || name.includes('深度')) presetMatch = (window._presetData||[]).find(x => x.label.includes('DeepSeek'));
+    else if (name.includes('minimax')) presetMatch = (window._presetData||[]).find(x => x.label.includes('MiniMax'));
+    if (presetMatch && presetMatch.models && presetMatch.models.length) {
+      const filtered = r.models.filter(m => presetMatch.models.includes(m));
+      models = filtered.length ? filtered : presetMatch.models;
+      note = `已按「${name}」显示 ${models.length} 个前沿模型（其余请手动输入）`;
+    } else {
+      note = `API 完整 ${models.length} 个（未识别厂商，按需选择）`;
+    }
+  }
+  const cur = document.getElementById('pm-model').value.trim();
+  if (!cur && models.length) document.getElementById('pm-model').value = models[0];
+  renderModelChips(models, cur);
+  toast(note, 'ok');
+}
+function renderModelChips(models, current) {
+  const box = document.getElementById('model-list');
+  if (!models.length) {
+    box.innerHTML = '<div class="empty-tip">（列表为空，先点「获取模型」拉取）</div>';
+    return;
+  }
+  box.innerHTML = models.map(m => {
+    const sel = m === current ? ' current' : '';
+    return `<span class="chip${sel}" data-m="${m.replace(/"/g,'&quot;')}">${m}</span>`;
+  }).join('');
+  // 绑定点击：填入 pm-model + 高亮
+  box.querySelectorAll('.chip').forEach(c => {
+    c.addEventListener('click', () => {
+      document.getElementById('pm-model').value = c.dataset.m;
+      box.querySelectorAll('.chip').forEach(x => x.classList.remove('current'));
+      c.classList.add('current');
+    });
+  });
+}
+async function deleteSelected() {
+  if (!selectedProviderId) return toast('请先选择供应商', 'err');
+  if (!confirm('删除供应商「' + providers.find(x=>x.id===selectedProviderId).name + '」？')) return;
+  const r = await api('delete_provider', selectedProviderId);
+  if (!r || !r.ok) return toast(r ? r.error : '删除失败', 'err');
+  selectedProviderId = null;
+  toast('已删除', 'ok');
+  loadProviders();
+}
+
+/* ---------- 供应商模态框 ---------- */
+async function initPresets() {
+  const data = await api('get_presets');
+  if (!data) return;
+  const sel = document.getElementById('pm-preset');
+  data.presets.forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.label; o.textContent = p.label;
+    sel.appendChild(o);
+    PRESET_MODELS[p.label] = p.models || [];
+  });
+  window._presetData = data.presets;
+}
+function openProviderModal(p) {
+  editingProvider = p || null;
+  document.getElementById('pm-title').textContent = p ? '编辑供应商' : '添加供应商';
+  document.getElementById('pm-preset').disabled = !!p;
+  document.getElementById('pm-kind').value = p ? (p.kind||'relay') : 'relay';
+  document.getElementById('pm-name').value = p ? p.name : '';
+  document.getElementById('pm-url').value = p ? (p.base_url||'') : '';
+  document.getElementById('pm-key').value = '';
+  document.getElementById('pm-key').placeholder = p && p.has_api_key ? '已保存；留空表示不修改' : '请输入 API Key';
+  document.getElementById('pm-model').value = p ? (p.model||'') : '';
+  document.getElementById('pm-wire').value = p ? (p.wire_api||'responses') : 'responses';
+  document.getElementById('pm-proxy').checked = p ? !!p.proxy : false;
+  document.getElementById('pm-upstream').value = p ? (p.upstream_base||'') : '';
+  // 编辑时显示当前模型（单 chip），点"获取模型"后会刷新为完整列表
+  renderModelChips(p && p.model ? [p.model] : [], p ? p.model : '');
+  toggleUpstream();
+  document.getElementById('provider-modal').classList.add('show');
+}
+function closeProviderModal() {
+  document.getElementById('provider-modal').classList.remove('show');
+}
+document.getElementById('pm-preset').addEventListener('change', e => {
+  const p = window._presetData.find(x => x.label === e.target.value);
+  if (!p) return;
+  document.getElementById('pm-kind').value = p.kind || 'relay';
+  document.getElementById('pm-name').value = p.name;
+  document.getElementById('pm-url').value = p.base_url;
+  document.getElementById('pm-upstream').value = p.base_url;
+  document.getElementById('pm-model').value = p.model;
+  renderModelChips(p.models||[], p.model);
+  document.getElementById('pm-wire').value = p.wire_api || 'responses';
+  document.getElementById('pm-proxy').checked = !!p.proxy;
+  toggleUpstream();
+});
+document.getElementById('pm-proxy').addEventListener('change', toggleUpstream);
+function toggleUpstream() {
+  const on = document.getElementById('pm-proxy').checked;
+  document.getElementById('pm-upstream-field').style.opacity = on ? '1' : '.4';
+  document.getElementById('pm-upstream').disabled = !on;
+}
+async function saveProvider() {
+  const name = document.getElementById('pm-name').value.trim();
+  if (!name) return toast('名称不能为空', 'err');
+  let id = editingProvider ? editingProvider.id :
+    (document.getElementById('pm-name').value.trim().toLowerCase().replace(/[^a-z0-9_]/g,''));
+  const data = {
+    id: id || ('relay' + Date.now() % 100000),
+    name,
+    kind: document.getElementById('pm-kind').value,
+    base_url: document.getElementById('pm-url').value.trim(),
+    api_key: document.getElementById('pm-key').value.trim(),
+    model: document.getElementById('pm-model').value.trim(),
+    wire_api: document.getElementById('pm-wire').value,
+    proxy: document.getElementById('pm-proxy').checked,
+    upstream_base: document.getElementById('pm-upstream').value.trim(),
+  };
+  const r = await api('save_provider', data);
+  if (!r || !r.ok) return toast(r ? r.error : '保存失败', 'err');
+  closeProviderModal();
+  toast('已保存', 'ok');
+  loadProviders();
+}
+
+/* ---------- 会话 ---------- */
+let checkedSessions = new Set();
+let archivedSessions = [];
+let checkedArchived = new Set();
+async function loadSessions() {
+  sessions = await api('get_sessions') || [];
+  archivedSessions = await api('get_archived_sessions') || [];
+  renderSessionList();
+}
+function renderSessionList() {
+  const alist = document.getElementById('archive-list');
+  if (!sessions.length) {
+    alist.innerHTML = '<div class="empty">没有未归档的会话</div>';
+  } else {
+    alist.innerHTML = sessions.map(s => `
+      <div class="s-item ${checkedSessions.has(s.id)?'checked':''}" onclick="toggleSession('${s.id}')">
+        <div class="cb">✓</div>
+        <span class="s-title">${esc(s.title)}</span>
+        <span class="s-prov">${esc(s.provider_name)}</span>
+      </div>`).join('');
+  }
+  const rlist = document.getElementById('restore-list');
+  if (!archivedSessions.length) {
+    rlist.innerHTML = '<div class="empty">没有已归档的会话</div>';
+  } else {
+    rlist.innerHTML = archivedSessions.map(s => `
+      <div class="s-item ${checkedArchived.has(s.id)?'checked':''}" onclick="toggleArchived('${s.id}')">
+        <div class="cb">✓</div>
+        <span class="s-title">${esc(s.title)}</span>
+        <span class="s-prov">${esc(s.provider_name)}</span>
+      </div>`).join('');
+  }
+}
+function toggleSession(id) {
+  if (checkedSessions.has(id)) checkedSessions.delete(id); else checkedSessions.add(id);
+  renderSessionList();
+}
+function toggleArchived(id) {
+  if (checkedArchived.has(id)) checkedArchived.delete(id); else checkedArchived.add(id);
+  renderSessionList();
+}
+async function doArchive() {
+  if (!checkedSessions.size) return toast('请先勾选会话', 'err');
+  if (!confirm(`归档 ${checkedSessions.size} 个会话？\n\n将调用 Codex 官方归档接口；操作前会备份数据库和会话文件。请先完全退出 Codex（含托盘）。`)) return;
+  const r = await api('archive_sessions', [...checkedSessions]);
+  if (!r || !r.ok) return toast(r ? r.error : '归档失败', 'err');
+  toast(`官方归档成功 ${r.count} 个（备份 ${r.backup}）`, 'ok');
+  checkedSessions.clear();
+  loadSessions();
+}
+async function doUnarchive() {
+  if (!checkedArchived.size) return toast('请先勾选已归档会话', 'err');
+  if (!confirm(`恢复 ${checkedArchived.size} 个会话到 Codex 左侧列表？\n\n将调用 Codex 官方恢复接口，操作前会自动备份。请先完全退出 Codex（含托盘）。`)) return;
+  const r = await api('unarchive_sessions', [...checkedArchived]);
+  if (!r || !r.ok) return toast(r ? r.error : '恢复失败', 'err');
+  toast(`官方恢复成功 ${r.count} 个（备份 ${r.backup}）`, 'ok');
+  checkedArchived.clear();
+  loadSessions();
+}
+
+/* ---------- 导航 ---------- */
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  });
+});
+
+/* ---------- 启动 ---------- */
+window.addEventListener('pywebviewready', async () => {
+  await initPresets();
+  await loadProviders();
+  await loadSessions();
+  refreshStatus();
+  setInterval(refreshStatus, 3000);
+  setInterval(loadSessions, 5000);  // 会话列表每 5 秒自动刷新（保留勾选）
+});
+</script>
+</body>
+</html>
