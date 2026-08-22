@@ -19,4 +19,6 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
       - run: python scripts/check_secrets.py
+        env:
+          PYTHONIOENCODING: utf-8
       - run: python -m ruff check .
