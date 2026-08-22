@@ -31,4 +31,5 @@ archive_backups/
 .DS_Store
 Thumbs.db
 tests/ui_preview*.png
+tests/icon_review.png
 tests/edge-preview-profile*/

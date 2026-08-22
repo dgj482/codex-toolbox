@@ -6,4 +6,5 @@
 - [ ] 从 zip 内运行发布版，不使用开发环境中的模块。
 - [ ] 核对 zip SHA-256，检查 VirusTotal/防病毒误报。
 - [ ] 更新 CHANGELOG 和版本号，创建对应 `v*` tag。
+- [ ] 在 Release 标题和说明中明确标注“Windows x64”；当前版本不发布 macOS 包。
 - [ ] 如面向更广泛用户，配置 Windows 代码签名证书并在 CI 中签名。

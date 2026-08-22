@@ -182,6 +182,20 @@ select:focus, input:focus { border-color:var(--blue); }
 }
 .toast.ok { border-left-color:var(--green); }
 .toast.err { border-left-color:var(--red); }
+.toast.notice { border-left-color:#d99a19; background:#fff9e9; }
+.connection-report { width:560px; max-width:92vw; }
+.connection-report .modal-header { align-items:flex-start; }
+.connection-summary { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.connection-summary span { padding:5px 9px; border-radius:7px; font-size:11px; font-weight:700; }
+.connection-summary .total { color:#596579; background:#eef2f6; }
+.connection-summary .success { color:#247b5d; background:#e8f7f1; }
+.connection-summary .failure { color:#b84945; background:#fdeceb; }
+.connection-results { display:flex; flex-direction:column; gap:7px; max-height:340px; overflow-y:auto; }
+.connection-result { display:flex; align-items:flex-start; gap:9px; padding:10px 11px; border:1px solid #e1e6ed; border-radius:9px; background:#f8fafc; }
+.connection-result .result-mark { width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center; border-radius:6px; color:#fff; background:#28b982; font-size:12px; font-weight:800; }
+.connection-result.failed .result-mark { background:#d95a54; }
+.connection-result strong { display:block; color:#354052; font-size:12px; }
+.connection-result small { display:block; margin-top:3px; color:#718096; font-size:10.5px; line-height:1.45; word-break:break-word; }
 @keyframes slideIn { from{opacity:0; transform:translateX(20px);} to{opacity:1;} }
 
 .muted { color:var(--muted); font-size:12px; }
@@ -337,11 +351,12 @@ main { flex:1; padding:24px 28px 30px; overflow-y:auto; }
 .health-icon svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.8; }
 .health-tile .value { color:#e9edf5; font-size:13px; font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .section-card { padding:0; overflow:hidden; }
-.section-header { min-height:78px; padding:18px 20px; display:flex; align-items:center; gap:16px; border-bottom:1px solid rgba(255,255,255,.06); }
-.section-title { min-width:0; }
+.section-header { min-height:78px; padding:18px 20px; display:flex; align-items:center; gap:12px; border-bottom:1px solid rgba(255,255,255,.06); }
+.section-title { min-width:0; flex:1 1 220px; }
 .section-title h2 { font-size:15px; font-weight:680; margin:0; }
 .section-title p { color:var(--muted); font-size:11px; margin-top:5px; }
-.section-header .btn { margin-left:auto; }
+.section-header .btn { margin-left:0; flex:0 0 auto; }
+.section-header .section-title + .btn { margin-left:auto; }
 .section-body { padding:16px 18px; }
 .p-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 .p-item {
@@ -378,10 +393,10 @@ main { flex:1; padding:24px 28px 30px; overflow-y:auto; }
 }
 .p-item.selected .selection-mark { border:4px solid var(--blue); background:#fff; }
 .action-bar {
-  display:flex; align-items:center; gap:8px; margin-top:14px; padding:12px 14px;
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:14px; padding:12px 14px;
   border-radius:12px; background:rgba(7,10,16,.48); border:1px solid rgba(255,255,255,.055);
 }
-.action-hint { margin-right:auto; color:var(--muted-2); font-size:10.5px; }
+.action-hint { flex:1 1 180px; margin-right:auto; color:var(--muted-2); font-size:10.5px; }
 .btn {
   min-height:35px; padding:0 14px; border-radius:9px; font-size:11.5px; font-weight:650;
   justify-content:center; border:1px solid transparent; transition:all .17s ease;
@@ -398,8 +413,20 @@ main { flex:1; padding:24px 28px 30px; overflow-y:auto; }
   border:1px solid rgba(240,179,91,.16); background:rgba(240,179,91,.055); color:#b8a889;
   font-size:11px; line-height:1.45;
 }
+.safety-copy { flex:1; min-width:0; }
+.experiment-toggle {
+  flex:0 0 auto; display:flex; align-items:center; gap:7px; min-height:32px; padding:0 10px;
+  border:1px solid #d7b978; border-radius:8px; background:rgba(255,255,255,.55); color:#754f16;
+  font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap;
+}
+.experiment-toggle input { width:16px; height:16px; accent-color:var(--blue); }
 .safety-icon { width:29px; height:29px; flex:0 0 auto; border-radius:9px; display:grid; place-items:center; background:rgba(240,179,91,.11); color:#f1bf77; font-weight:800; }
-.archive-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.archive-grid {
+  display:grid;
+  /* 两张归档卡片不足 920px 时自动纵向排列，避免操作区被压成逐字竖排。 */
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));
+  gap:14px;
+}
 .archive-card { padding:0; overflow:hidden; margin:0; }
 .archive-card .section-header { min-height:72px; padding:16px 18px; }
 .count-pill { margin-left:8px; padding:2px 7px; border-radius:7px; color:var(--muted); background:rgba(255,255,255,.05); font-size:10px; font-weight:600; }
@@ -411,8 +438,13 @@ main { flex:1; padding:24px 28px 30px; overflow-y:auto; }
 .s-item .cb { width:17px; height:17px; border-width:1px; border-color:#455068; border-radius:5px; }
 .s-title { font-size:11.5px; color:#dce2ec; }
 .s-prov { padding:3px 6px; border-radius:6px; background:rgba(255,255,255,.04); font-size:9.5px; }
-.archive-actions { display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,.055); }
-.selected-count { margin-right:auto; color:var(--muted-2); font-size:10px; }
+.archive-actions {
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px;
+  margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,.055);
+}
+.selected-count { grid-column:1 / -1; color:var(--muted-2); font-size:10.5px; }
+.archive-actions .btn { width:100%; min-width:0; white-space:nowrap; line-height:1.35; padding:7px 10px; }
+.archive-actions .archive-repair { grid-column:1 / -1; min-height:38px; }
 .route-layout { display:grid; grid-template-columns:minmax(0,1fr) 286px; gap:14px; align-items:start; }
 .route-card { padding:0; overflow:hidden; margin:0; }
 .route-card .section-header { min-height:72px; padding:16px 18px; }
@@ -447,6 +479,14 @@ main { flex:1; padding:24px 28px 30px; overflow-y:auto; }
 .route-controls .btn { width:100%; margin-top:8px; }
 .route-selected { padding:11px 12px; margin:4px 0 10px; border-radius:10px; background:rgba(7,10,16,.42); color:var(--muted); font-size:10.5px; }
 .route-tip { margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,.06); color:var(--muted-2); font-size:9.5px; line-height:1.55; }
+.route-operation-status { display:flex; align-items:flex-start; gap:8px; margin-top:12px; padding:10px 11px; border:1px solid #dce4ef; border-radius:9px; background:#f7f9fc; color:#69778c; font-size:11px; line-height:1.5; }
+.route-operation-status::before { content:""; width:7px; height:7px; flex:0 0 auto; margin-top:5px; border-radius:50%; background:#aeb8c6; box-shadow:0 0 0 4px rgba(174,184,198,.14); }
+.route-operation-status.busy { color:#5363bb; background:#f4f6ff; border-color:#dbe0ff; }
+.route-operation-status.busy::before { background:#6978ed; box-shadow:0 0 0 4px rgba(105,120,237,.14); }
+.route-operation-status.ok { color:#287c60; background:#effaf6; border-color:#cdeee1; }
+.route-operation-status.ok::before { background:#2dbb86; box-shadow:0 0 0 4px rgba(45,187,134,.14); }
+.route-operation-status.error { color:#a74d48; background:#fff5f4; border-color:#f0d2cf; }
+.route-operation-status.error::before { background:#d95a54; box-shadow:0 0 0 4px rgba(217,90,84,.14); }
 .overlay { background:rgba(3,5,9,.72); backdrop-filter:blur(8px); }
 .modal {
   width:600px; padding:0; border-radius:18px; overflow:hidden;
@@ -557,6 +597,7 @@ body {
 .btn.red:hover { background:#ffe8e6; border-color:#edb9b6; }
 .safety-banner { background:#fff8ed; border-color:#f2dfbe; color:#805e2e; }
 .safety-icon { color:#a66919; background:#f8e8cb; }
+.experiment-toggle { background:#fffdf8; border-color:#e7c989; color:#805e2e; }
 .count-pill,.s-prov,.route-provider { background:#eef2f6; }
 .s-item .cb,.route-item .cb { border-color:#aeb8c6; }
 .route-tag.follow { color:#3e63a8; background:#e9f0fc; }
@@ -581,8 +622,121 @@ select option { color:#202938; background:#fff; }
 .model-list .chip:hover,.model-list .chip.current { color:#fff; background:var(--blue); border-color:var(--blue); }
 .toast { color:#293344; background:#fff; border-color:#dce2ea; box-shadow:var(--shadow); }
 .empty { border-color:#d9e0e8; }
+.background-layout {
+  display:grid;
+  grid-template-columns:minmax(300px,.78fr) minmax(0,1.22fr);
+  align-items:start;
+  gap:14px;
+}
+.background-layout > .card:first-child { align-self:start; height:fit-content; }
+.background-media-card { padding:0; overflow:hidden; height:fit-content; }
+.background-media-card .section-header { background:linear-gradient(135deg,rgba(109,124,255,.08),rgba(56,211,148,.035)); }
+.background-media-card .section-kicker { color:#8994ff; }
+.background-preview {
+  width:100%; height:clamp(220px,30vw,360px); min-height:220px; max-height:360px;
+  aspect-ratio:4 / 3; border-radius:13px; border:1px dashed #cbd4df;
+  background:linear-gradient(135deg,#f6f8fb,#e9eef5); background-size:cover; background-position:center;
+  display:flex; align-items:center; justify-content:center; overflow:hidden; color:#647084; position:relative;
+}
+.background-preview span { padding:8px 12px; border-radius:8px; background:rgba(255,255,255,.78); }
+.background-preview::after { content:"本地预览"; position:absolute; top:11px; right:11px; padding:4px 7px; border-radius:6px; color:#627087; background:rgba(255,255,255,.72); font-size:10px; font-weight:700; letter-spacing:.04em; }
+.background-file-meta { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:12px 0 0; padding:10px 12px; border:1px solid #e1e7ef; border-radius:10px; background:#f8fafc; }
+.background-file-state { display:flex; align-items:center; gap:9px; min-width:0; }
+.background-file-state > div { min-width:0; }
+.background-file-state strong,.background-file-state small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.background-file-state strong { color:#354054; font-size:12px; }
+.background-file-state small { margin-top:3px; color:#7a8698; font-size:10.5px; }
+.background-file-dot { width:8px; height:8px; flex:0 0 auto; border-radius:50%; background:#aeb8c6; box-shadow:0 0 0 4px rgba(174,184,198,.15); }
+.background-file-dot.ready { background:#39c995; box-shadow:0 0 0 4px rgba(57,201,149,.13); }
+.background-file-meta > span { flex:0 0 auto; color:#6b7890; font-size:10.5px; font-weight:700; }
+.background-path { display:flex; gap:8px; align-items:center; }
+.background-path input { flex:1; min-width:0; }
+.background-quick-actions { display:grid; grid-template-columns:1fr; gap:8px; margin-top:12px; }
+.background-quick-actions .btn { width:100%; }
+.background-live-panel { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-top:12px; padding:11px 12px; border:1px solid #dce4f2; border-radius:10px; background:linear-gradient(135deg,#f7f8ff,#fbfcff); }
+.background-live-panel strong { display:block; color:#4d5ac3; font-size:11px; }
+.background-live-panel span { display:block; margin-top:4px; color:#718096; font-size:10.5px; line-height:1.45; }
+.background-summary { flex:0 0 auto; max-width:48%; color:#68758a; font-size:10.5px; line-height:1.5; text-align:right; }
+.appearance-panel { padding:0 !important; overflow:hidden; }
+.appearance-panel > h2 { padding:18px 20px 4px; margin:0; }
+.appearance-panel > .panel-summary { margin:0; padding:0 20px 15px; color:#687487; font-size:12px; line-height:1.65; }
+.appearance-panel > h2 { letter-spacing:.01em; }
+.control-section {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  column-gap:10px;
+  padding:16px 20px 18px;
+  border-top:1px solid #e6ebf2;
+}
+.control-section:nth-of-type(even) { background:#fbfcfe; }
+.control-section > .control-section-head,
+.control-section > p,
+.control-section > .appearance-action,
+.control-section > .compact-field,
+.control-section > .checkbox-line,
+.control-section > .experiment-note { grid-column:1 / -1; }
+.control-section-head { display:flex; align-items:flex-start; gap:10px; margin-bottom:4px; }
+.control-section-index { flex:0 0 auto; display:grid; place-items:center; width:22px; height:22px; border-radius:7px; color:#5664d7; background:#e8ebff; font-size:11px; font-weight:800; }
+.control-section h3 { margin:1px 0 0; color:#354054; font-size:14px; }
+.control-section > p { margin:5px 0 0 32px; color:#748095; font-size:11.5px; line-height:1.55; }
+.range-field { min-width:0; margin:12px 0 0; padding:11px 12px 10px; border:1px solid #e7ebf1; border-radius:10px; background:#fff; }
+.range-label { display:flex; justify-content:space-between; align-items:center; color:#3d4757; font-size:13px; font-weight:600; }
+.range-label small { color:#6e798b; font-size:12px; font-weight:400; }
+.range-value { color:#5360db; font-weight:700; }
+input[type=range] { width:100%; accent-color:#5868df; margin-top:8px; }
+.range-help { margin:7px 0 0; color:#778398; font-size:11.5px; line-height:1.5; }
+.compact-field { margin-top:12px; }
+.compact-field label { display:block; margin-bottom:5px; font-size:12px; font-weight:700; }
+.compact-field small { display:block; margin-top:5px; color:#778398; font-size:11.5px; line-height:1.5; }
+.appearance-action { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:14px 0 2px; padding:11px 12px; border:1px solid #dbe3f5; border-radius:10px; background:#f5f7ff; }
+.appearance-action strong { color:#4755c0; font-size:12px; }
+.appearance-action span { display:block; margin-top:3px; color:#738097; font-size:11px; line-height:1.45; }
+.experiment-note { color:#687487; font-size:12px; line-height:1.65; }
+@media (max-width:1120px) {
+  .background-layout { grid-template-columns:minmax(270px,.72fr) minmax(0,1.28fr); }
+  .control-section { grid-template-columns:1fr; }
+}
+@media (max-width:820px) { .background-layout { grid-template-columns:1fr; } }
+@media (max-width:520px) { .appearance-action { align-items:flex-start; flex-direction:column; } }
 @media (max-width:980px) {
   .overview-copy { border-bottom-color:#e6eaf0; }
+}
+.saved-background-launch { margin:16px 0 0 45px; min-height:38px; padding:0 16px; box-shadow:0 8px 18px rgba(89,105,237,.18); }
+.home-background-launch { margin-left:auto !important; }
+.background-layout { display:block; }
+.background-media-card { margin-bottom:14px; }
+.appearance-panel { width:100%; }
+/* 窄窗口优先保证中文按钮完整可读，避免压缩成逐字竖排。 */
+@media (max-width:900px) {
+  main { padding:18px; }
+  .section-header { align-items:flex-start; flex-wrap:wrap; }
+  .section-header .section-title + .btn { margin-left:0; }
+  .home-background-launch { margin-left:0 !important; }
+  .action-bar { align-items:stretch; }
+  .action-hint { flex-basis:100%; }
+  .action-bar .btn { flex:1 1 120px; }
+}
+@media (max-width:680px) {
+  main { padding:14px; }
+  .safety-banner { align-items:flex-start; flex-wrap:wrap; }
+  .experiment-toggle { width:100%; justify-content:center; }
+  .background-path { align-items:stretch; flex-direction:column; }
+  .background-path .btn { width:100%; }
+  .btn-row { display:grid; grid-template-columns:1fr; }
+  .btn-row .btn { width:100%; }
+  .background-live-panel,.background-file-meta { flex-direction:column; align-items:flex-start; }
+  .background-summary { max-width:none; text-align:left; }
+}
+@media (max-width:520px) {
+  .section-header { padding:15px; }
+  .section-body { padding:13px; }
+  .archive-card .section-header { padding:14px; }
+  .archive-card .section-body { padding:11px; }
+  .archive-actions { grid-template-columns:1fr; }
+  .archive-actions .btn { grid-column:auto; white-space:normal; }
+  .action-bar .btn { flex-basis:100%; }
+  .saved-background-launch { margin-left:0; width:100%; }
+  .home-background-launch { display:none; }
 }
 </style>
 </head>
@@ -599,13 +753,21 @@ select option { color:#202938; background:#fff; }
         <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 7h11M19 7h1M4 17h1M9 17h11M15 4v6M9 14v6"/></svg></span>
         <span>通道切换</span>
       </button>
-      <button class="tab-btn" data-tab="tab-routes" data-title="会话路由" data-subtitle="让不同会话固定使用不同模型通道">
+      <button class="tab-btn" data-tab="tab-routes" data-title="会话路由实验" data-subtitle="非官方实验：为指定会话设置固定或跟随全局通道">
         <span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 6h5a3 3 0 0 1 3 3v6a3 3 0 0 0 2 2.8M15 9a3 3 0 0 1 2-2.8"/></svg></span>
-        <span>会话路由</span>
+        <span>会话路由实验</span>
       </button>
-      <button class="tab-btn" data-tab="tab-archive" data-title="会话管理" data-subtitle="通过 Codex 官方接口归档与恢复">
+      <button class="tab-btn" data-tab="tab-archive" data-title="会话管理" data-subtitle="通过 Codex app-server 归档与恢复；兼容性取决于版本">
         <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4zM3 4h18v3H3zM9 11h6"/></svg></span>
         <span>会话归档</span>
+      </button>
+      <button class="tab-btn" data-tab="tab-appearance" data-title="实验外观" data-subtitle="为当前 Codex 临时应用本地背景和透明效果">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM7 16l3-4 3 3 2-2 2 3M8.5 9.5h.01"/></svg></span>
+        <span>实验外观</span>
+      </button>
+      <button class="tab-btn" data-tab="tab-diagnostics" data-title="本地诊断" data-subtitle="核对工具箱读取的数据、备份和实验开关状态">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4M12 16h.01"/></svg></span>
+        <span>本地诊断</span>
       </button>
     </nav>
     <div class="sidebar-spacer"></div>
@@ -664,19 +826,20 @@ select option { color:#202938; background:#fff; }
         </div>
 
         <div class="card section-card">
-          <div class="section-header">
-            <div class="section-title">
-              <h2>全局默认通道</h2>
-              <p>决定新会话默认走哪条通道；已有会话可在“会话路由”中单独设置</p>
-            </div>
-            <button class="btn green" onclick="openProviderModal()">＋ 添加供应商</button>
+            <div class="section-header">
+              <div class="section-title">
+                <h2>全局默认通道</h2>
+                <p>决定新会话默认走哪条通道；已有会话可在“会话路由”中单独设置</p>
+              </div>
+              <button class="btn blue home-background-launch" onclick="launchCodexWithSavedBackground()">启动 Codex并应用背景</button>
+              <button class="btn green" onclick="openProviderModal()">＋ 添加供应商</button>
           </div>
           <div class="section-body">
             <div class="p-list" id="provider-list"></div>
             <div class="action-bar">
               <span class="action-hint" id="provider-action-hint">选择一个通道后可进行操作</span>
               <button class="btn ghost" id="btn-diagnose" onclick="diagnoseSelected()">检查配置</button>
-              <button class="btn ghost" id="btn-test" onclick="testSelected()">测试连接</button>
+              <button class="btn ghost" id="btn-test-all" onclick="testAllProviders()">全部检测</button>
               <button class="btn ghost" id="btn-edit" onclick="editSelected()">编辑</button>
               <button class="btn red" id="btn-delete" onclick="deleteSelected()">删除</button>
               <button class="btn blue" id="btn-switch" onclick="switchSelected()">切换到选中 →</button>
@@ -688,8 +851,9 @@ select option { color:#202938; background:#fff; }
       <!-- ============ 会话路由 ============ -->
       <div class="panel" id="tab-routes">
         <div class="safety-banner">
-          <span class="safety-icon">✓</span>
-          <span>使用 Codex 官方 <strong>thread/resume</strong> 接口切换单个会话，不直接改写 SQLite 或 JSONL；操作前自动备份。执行前请完全退出 Codex（含托盘）。</span>
+          <span class="safety-icon">i</span>
+          <span class="safety-copy">非官方兼容实验：通过 app-server 尝试设置会话通道，不直接改写会话 SQLite 或 JSONL。Codex 更新后可能失效；请自行遵守上游供应商条款、地区、额度与计费规则。</span>
+          <label class="experiment-toggle" title="默认关闭，启用后才可操作会话路由"><input type="checkbox" id="enable-session-routing" onchange="toggleCommunityExperiment('session_routing', this.checked)"> 启用会话路由实验</label>
         </div>
         <div class="route-layout">
           <div class="card route-card">
@@ -706,15 +870,33 @@ select option { color:#202938; background:#fff; }
           </div>
           <div class="card route-controls">
             <h2>设置选中会话</h2>
-            <p>“固定通道”后不随全局改变；“跟随全局”会在以后切换全局通道时自动同步。</p>
+            <p>全局默认只影响新会话；已有会话不会在切换全局时被自动改写。</p>
             <div class="route-selected" id="route-selected">已选 0 个会话</div>
             <div class="field">
               <label>目标通道</label>
               <select id="route-provider"></select>
             </div>
+            <div class="field">
+              <label>目标模型（仅本次固定路由）</label>
+              <input type="text" id="route-model" placeholder="留空则使用目标通道的默认模型">
+            </div>
+            <div class="field">
+              <label>思考强度（仅本次固定路由）</label>
+              <select id="route-effort">
+                <option value="">使用目标通道的默认设置</option>
+                <option value="minimal">Minimal</option>
+                <option value="low">低</option>
+                <option value="medium">中</option>
+                <option value="high">高</option>
+                <option value="xhigh">超高</option>
+                <option value="max">最大</option>
+                <option value="ultra">Ultra</option>
+              </select>
+            </div>
             <button class="btn blue" id="btn-route-fixed" onclick="doFixRoute()">固定到目标通道</button>
-            <button class="btn ghost" id="btn-route-follow" onclick="doFollowRoute()">改为跟随全局</button>
-            <div class="route-tip">固定成功后重新启动 Codex，右下角应显示目标模型和思考强度。第三方是否真正执行该强度由上游能力决定；若接口异常，工具箱会尝试恢复原设置。</div>
+            <button class="btn ghost" id="btn-route-follow" onclick="doFollowRoute()">同步到当前默认通道</button>
+            <div class="route-operation-status" id="route-operation-status">选择会话和目标通道后，操作进度会显示在这里。</div>
+            <div class="route-tip">确认前会展示会话、目标通道、模型和思考强度。第三方是否真正执行该强度由上游能力决定；若接口异常，工具箱会尝试恢复原设置，不保证跨版本兼容。</div>
           </div>
         </div>
       </div>
@@ -723,7 +905,7 @@ select option { color:#202938; background:#fff; }
       <div class="panel" id="tab-archive">
         <div class="safety-banner">
           <span class="safety-icon">i</span>
-          <span>归档和恢复都调用 Codex 官方 app-server，操作前自动备份。执行操作前请完全退出 Codex（含托盘）。</span>
+          <span>归档和恢复会通过 Codex app-server 尝试执行并校验，Codex 更新后可能失效。若已归档会话仍在侧栏出现，可使用下方“实验兼容修复”；它只处理 state 已确认 archived=1 的会话，先备份再验证。执行前请完全退出 Codex（含托盘）。</span>
         </div>
         <div class="archive-grid">
           <div class="card archive-card">
@@ -738,6 +920,7 @@ select option { color:#202938; background:#fff; }
               <div class="archive-actions">
                 <span class="selected-count" id="active-selected">已选 0 个</span>
                 <button class="btn ghost" onclick="loadSessions()">刷新</button>
+                <button class="btn ghost archive-repair" onclick="repairArchiveIndex()">修复已归档会话侧栏残留</button>
                 <button class="btn red" onclick="doArchive()">归档选中</button>
               </div>
             </div>
@@ -760,6 +943,102 @@ select option { color:#202938; background:#fff; }
           </div>
         </div>
       </div>
+
+      <!-- ============ 实验外观 ============ -->
+      <div class="panel" id="tab-appearance">
+        <div class="safety-banner">
+          <span class="safety-icon">i</span>
+          <span class="safety-copy">非官方、本地外观实验：不修改 Codex 安装包、账号或会话数据；关闭、更新或界面结构变化后都可能失效，可一键恢复。</span>
+          <label class="experiment-toggle" title="默认关闭，启用后才可应用外观到 Codex"><input type="checkbox" id="enable-local-appearance" onchange="toggleCommunityExperiment('local_appearance', this.checked)"> 启用本地外观实验</label>
+        </div>
+        <div class="background-layout">
+          <div class="card background-media-card">
+            <div class="section-header">
+              <div class="section-title"><span class="section-kicker">MEDIA WORKSPACE</span><h2>背景媒体</h2><p>仅使用本机选择的图片、GIF 或 MP4，不会上传。</p></div>
+            </div>
+            <div class="section-body">
+              <div class="background-preview" id="background-preview"><span>尚未选择图片</span></div>
+              <div class="background-file-meta">
+                <div class="background-file-state"><span class="background-file-dot" id="background-file-dot"></span><div><strong id="background-file-name">未选择背景</strong><small id="background-file-type">等待本地文件</small></div></div>
+                <span id="background-preview-mode">未启动</span>
+              </div>
+              <div class="field" style="margin-top:14px;">
+                <label>本地图片路径</label>
+                <div class="background-path"><input type="text" id="background-image-path" placeholder="请选择 PNG、JPG、WEBP、GIF 或 MP4 文件" oninput="updateBackgroundImagePath()"><button class="btn ghost" onclick="chooseBackgroundImage()">选择背景</button></div>
+              </div>
+              <div class="field">
+                <label>Codex 程序路径（通常不用填写）</label>
+                <div class="background-path"><input type="text" id="codex-launch-path" placeholder="留空则自动检测已安装的 Codex 桌面版"><button class="btn ghost" onclick="chooseCodexExecutable()">选择程序</button></div>
+                <div class="muted" style="margin-top:5px;">仅用于“启动 Codex 并应用背景”；会话管理仍使用自己的 app-server 入口。</div>
+              </div>
+              <div class="btn-row">
+                <button class="btn blue" onclick="launchCodexWithSavedBackground()">启动 Codex 并应用背景</button>
+                <button class="btn ghost" onclick="startLiveBackgroundPreview()">启动 Codex 并开启实时调节</button>
+                <button class="btn green" onclick="applyBackground(false)">立即应用到已打开的 Codex</button>
+                <button class="btn ghost" onclick="removeBackground()">恢复 Codex 原外观</button>
+              </div>
+              <div class="background-quick-actions"><button class="btn ghost" type="button" onclick="resetBackgroundSettings()">恢复默认外观参数</button></div>
+              <div class="background-live-panel"><div><strong>实时预览状态</strong><span id="background-live-status-short">尚未启动背景版 Codex</span></div><span class="background-summary" id="background-summary">默认参数 · 背景占用 100%</span></div>
+            </div>
+          </div>
+          <div class="card appearance-panel">
+            <h2>外观调节</h2>
+            <p class="panel-summary">数值右侧会实时显示。下面按“背景画面、界面通透、细节”分组；每项只影响它写明的区域。</p>
+
+            <section class="control-section">
+              <div class="control-section-head"><span class="control-section-index">1</span><h3>背景画面</h3></div>
+              <p>决定图片或视频出现在哪里、占多大，以及是否允许裁切。</p>
+              <div class="range-field"><div class="range-label"><span>背景占用宽度</span><span class="range-value" id="scale-value">100%</span></div><input type="range" id="background-scale" min="10" max="160" value="100" oninput="updateBackgroundValues()"><p class="range-help">10% 是小图；100% 约等于铺满窗口宽度；超过 100% 会继续放大画面。</p></div>
+              <div class="range-field"><div class="range-label"><span>背景占用高度</span><span class="range-value" id="height-value">100%</span></div><input type="range" id="background-height" min="10" max="160" value="100" oninput="updateBackgroundValues()"><p class="range-help">单独控制画面高低。横向视频可降低它，避免遮住上下区域。</p></div>
+              <div class="range-field"><div class="range-label"><span>水平位置</span><span class="range-value" id="position-x-value">50%</span></div><input type="range" id="background-position-x" min="0" max="100" value="50" oninput="updateBackgroundValues()"><p class="range-help">0% 靠左、50% 居中、100% 靠右；可把人物或主体移到视线更舒服的位置。</p></div>
+              <div class="range-field"><div class="range-label"><span>垂直位置</span><span class="range-value" id="position-y-value">50%</span></div><input type="range" id="background-position-y" min="0" max="100" value="50" oninput="updateBackgroundValues()"><p class="range-help">0% 靠上、50% 居中、100% 靠下；适合避开标题栏或输入框。</p></div>
+              <div class="compact-field"><label>图片显示方式</label><select id="media-fit" onchange="updateBackgroundValues()"><option value="cover">铺满窗口：画面更满，边缘可能被裁切</option><option value="contain">完整显示：不裁切，周围可能留空</option></select><small>人物照片建议先试“完整显示”；抽象壁纸和风景通常适合“铺满窗口”。</small></div>
+            </section>
+
+            <section class="control-section">
+              <div class="control-section-head"><span class="control-section-index">2</span><h3>界面通透</h3></div>
+              <p>决定背景有多清楚，以及文字区域保留多少浅色底板。</p>
+              <div class="appearance-action"><div><strong>想先看清背景？</strong><span>关闭遮罩和模糊，并降低各区域底色，让图片或视频尽量清晰可见。</span></div><button class="btn ghost" type="button" onclick="useBackgroundClearPreset()">背景清晰</button></div>
+              <div class="appearance-action"><div><strong>不磨砂也要文字清楚？</strong><span>关闭背景模糊，并提高文字区域的浅色底板，背景保持锐利但不影响阅读。</span></div><button class="btn ghost" type="button" onclick="useCrispBackground()">无磨砂 · 文字清晰</button></div>
+              <div class="range-field"><div class="range-label"><span>背景柔化</span><span class="range-value" id="mask-value">42%</span></div><input type="range" id="background-mask" min="0" max="90" value="42" oninput="updateBackgroundValues()"><p class="range-help">给整张背景加一层浅色遮罩。越低越清晰鲜明；越高越柔和、更容易看文字。</p></div>
+              <div class="range-field"><div class="range-label"><span>对话主区域透明度</span><span class="range-value" id="opacity-value">58%</span></div><input type="range" id="panel-opacity" min="0" max="100" value="58" oninput="updateBackgroundValues()"><p class="range-help">只影响中间的对话、编辑和空白内容区域，不影响左侧会话列表或窗口最上方栏。0% 最通透；100% 接近普通白底。</p></div>
+              <div class="range-field"><div class="range-label"><span>左侧导航透明度</span><span class="range-value" id="sidebar-value">42%</span></div><input type="range" id="sidebar-opacity" min="0" max="100" value="42" oninput="updateBackgroundValues()"><p class="range-help">只影响左侧导航和会话列表。数值高时列表更清楚，数值低时背景更明显。</p></div>
+              <div class="range-field"><div class="range-label"><span>窗口顶部栏透明度</span><span class="range-value" id="toolbar-value">28%</span></div><input type="range" id="toolbar-opacity" min="0" max="100" value="28" oninput="updateBackgroundValues()"><p class="range-help">只影响窗口最上方菜单栏和工具栏；0% 最通透，数值越高越容易看清顶部文字。</p></div>
+              <div class="range-field"><div class="range-label"><span>会话标题栏透明度</span><span class="range-value" id="thread-header-value">28%</span></div><input type="range" id="thread-header-opacity" min="0" max="100" value="28" oninput="updateBackgroundValues()"><p class="range-help">只影响对话区上方显示会话名称的标题栏，例如“工具箱 (2)”。不影响窗口最上方菜单栏或中间正文。</p></div>
+              <div class="range-field"><div class="range-label"><span>浮层与结果卡透明度</span><span class="range-value" id="card-value">24%</span></div><input type="range" id="card-opacity" min="0" max="100" value="24" oninput="updateBackgroundValues()"><p class="range-help">影响菜单、弹出面板和文件修改结果卡。数值高时这些局部区域更容易阅读。</p></div>
+              <div class="range-field"><div class="range-label"><span>磨砂模糊</span><span class="range-value" id="blur-value">6 px</span></div><input type="range" id="background-blur" min="0" max="20" value="6" oninput="updateBackgroundValues()"><p class="range-help">模糊的是文字后方的背景，不会模糊文字。0 px 最锐利；数值越高越有玻璃质感。</p></div>
+            </section>
+
+            <section class="control-section">
+              <div class="control-section-head"><span class="control-section-index">3</span><h3>细节与动态媒体</h3></div>
+              <p>用于减少界面干扰，或开启更耗资源的动态背景。</p>
+              <label class="checkbox-line"><input type="checkbox" id="animated-gif" onchange="scheduleLiveBackgroundApply()"> 启用动态 GIF 背景 <small>高资源实验，文件限 3 MB，默认关闭。</small></label>
+              <label class="checkbox-line"><input type="checkbox" id="animated-mp4" onchange="scheduleLiveBackgroundApply()"> 启用本地 MP4 背景 <small>静音循环，文件限 30 MB；会临时载入当前 Codex 窗口内存。</small></label>
+              <label class="checkbox-line"><input type="checkbox" id="live-background-preview" onchange="toggleLiveBackgroundPreview(this.checked)"> 拖动滑块时实时应用到当前背景版 <small>只在由本工具启动并已开启调试端口的背景版 Codex 中生效。</small></label>
+              <label class="checkbox-line"><input type="checkbox" id="gradient-enabled" onchange="scheduleLiveBackgroundApply()"> 启用双色渐变 <small>在背景上叠加固定斜向渐变，不影响原始图片文件。</small></label>
+              <div class="row2">
+                <div class="compact-field"><label>渐变起始颜色</label><input type="color" id="gradient-start" value="#5868df" oninput="scheduleLiveBackgroundApply()"></div>
+                <div class="compact-field"><label>渐变结束颜色</label><input type="color" id="gradient-end" value="#2bb984" oninput="scheduleLiveBackgroundApply()"></div>
+              </div>
+              <div class="range-field"><div class="range-label"><span>渐变强度</span><span class="range-value" id="gradient-value">28%</span></div><input type="range" id="gradient-opacity" min="0" max="80" value="28" oninput="updateBackgroundValues()"><p class="range-help">0% 不可见；数值越高，渐变颜色越明显。</p></div>
+              <p class="experiment-note" id="background-live-status">先确认启用，再点击“启动并开启实时预览”。Codex 关闭后，实时预览会自动暂停。</p>
+              <p class="experiment-note">MP4 不上传、不开放本机媒体端口；只会以受控 data: 媒体层临时载入当前 Codex。大文件会占用更多内存，不提供任意 JavaScript 注入入口。</p>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 本地诊断 ============ -->
+      <div class="panel" id="tab-diagnostics">
+        <div class="safety-banner">
+          <span class="safety-icon">i</span>
+          <span>这里只显示本机配置与备份的数量和路径，不显示 API Key、会话内容或数据库记录。用于确认升级后工具箱仍读取同一份本地数据。</span>
+        </div>
+        <div class="card section-card">
+          <div class="section-header"><div class="section-title"><h2>本地状态</h2><p>遇到“数据似乎不见了”时，先在这里确认数据目录和读取数量。</p></div><button class="btn ghost" onclick="loadDiagnostics()">刷新诊断</button></div>
+          <div class="section-body" id="diagnostics-content"><div class="empty">正在读取本地状态…</div></div>
+        </div>
+      </div>
     </main>
   </section>
 </div>
@@ -768,7 +1047,7 @@ select option { color:#202938; background:#fff; }
 <div class="overlay" id="provider-modal">
   <div class="modal">
     <div class="modal-header">
-      <div><h2 id="pm-title">添加供应商</h2><p>配置会保存到当前 Windows 用户的本地数据目录</p></div>
+      <div><h2 id="pm-title">添加供应商</h2><p>预设只是起始模板；保存前请用“获取模型”或“测试连接”确认你的账户实际可用。</p></div>
       <button class="btn ghost modal-close" onclick="closeProviderModal()">×</button>
     </div>
     <div class="modal-body">
@@ -779,9 +1058,10 @@ select option { color:#202938; background:#fff; }
     <div class="row2">
       <div class="field"><label>类型</label>
         <select id="pm-kind">
-          <option value="direct">直连（官方 API）</option>
-          <option value="relay">中转（第三方服务商）</option>
-          <option value="official">官方（ChatGPT Plus）</option>
+          <option value="direct">API 接入（原生 Responses）</option>
+          <option value="relay">API 接入（本地协议翻译）</option>
+          <option value="local">本地服务</option>
+          <option value="official" disabled>内置登录（当前 Codex 账户）</option>
         </select>
       </div>
       <div class="field"><label>名称 *</label><input type="text" id="pm-name"></div>
@@ -794,11 +1074,12 @@ select option { color:#202938; background:#fff; }
     </label>
       <input type="text" id="pm-model" placeholder="可直接输入，或点下方列表选择" style="width:100%;">
       <div id="model-list" class="model-list"></div>
-      <div class="muted" style="margin-top:4px;">「获取模型」从该 API 拉取真实可用模型（需先填好 Base URL 和 Key）</div>
+      <div class="muted" style="margin-top:4px;">「获取模型」优先显示 API 实时返回的较新模型；旧模型或未显示型号仍可手动输入。</div>
     </div>
     <div class="row2">
       <div class="field"><label>协议</label>
         <select id="pm-wire"><option value="responses">responses</option><option value="chat">chat</option></select>
+        <button class="btn sm ghost" onclick="detectProtocol()" type="button" style="margin-top:7px;">检测协议</button>
       </div>
       <div class="field"><label>默认思考强度</label>
         <select id="pm-effort">
@@ -813,13 +1094,28 @@ select option { color:#202938; background:#fff; }
       </div>
     </div>
     <div class="muted" style="margin:-6px 0 12px;">第三方通道是否真正执行该强度，由上游 API 和模型能力决定；不支持时请选择“保持当前设置”。</div>
-    <label class="checkbox-line"><input type="checkbox" id="pm-proxy"> 需要本地翻译（上游是 Chat Completions，如 DeepSeek 官方）</label>
+    <label class="checkbox-line"><input type="checkbox" id="pm-proxy"> 需要本地翻译（上游仅支持 Chat Completions；多数兼容预设需要）</label>
+    <div class="muted" style="margin:-3px 0 10px;">“检测协议”会发送一次最小请求，可能产生极少量 token；仅给出建议，不会自动保存或切换。</div>
     <div class="field" id="pm-upstream-field"><label>上游地址</label><input type="text" id="pm-upstream" placeholder="https://api.deepseek.com/v1"></div>
     </div>
     <div class="modal-footer">
       <button class="btn ghost" onclick="closeProviderModal()">取消</button>
       <button class="btn green" onclick="saveProvider()">保存供应商</button>
     </div>
+  </div>
+</div>
+
+<div class="overlay" id="connection-report-modal">
+  <div class="modal connection-report">
+    <div class="modal-header">
+      <div><h2>通道连接检测报告</h2><p>逐个复用“测试连接”检查，不会切换默认通道，也不会产生对话内容。</p></div>
+      <button class="btn ghost modal-close" onclick="closeConnectionReport()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="connection-summary" id="connection-summary"></div>
+      <div class="connection-results" id="connection-results"></div>
+    </div>
+    <div class="modal-footer"><button class="btn blue" onclick="closeConnectionReport()">完成</button></div>
   </div>
 </div>
 
@@ -831,14 +1127,51 @@ let sessions = [];
 let selectedProviderId = null;
 let editingProvider = null;
 const PRESET_MODELS = {};
+let communityExperiments = { session_routing:false, local_appearance:false };
+let bootstrapStarted = false;
+let bootstrapRetryTimer = null;
+let bridgeErrorShown = false;
+let routeActionBusy = false;
+let allProvidersTesting = false;
+
+function delay(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+async function waitForApiMethod(method, timeout = 2500) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const fn = window.pywebview?.api?.[method];
+    if (typeof fn === 'function') return fn;
+    await delay(80);
+  }
+  return null;
+}
 
 async function api(method, ...args) {
   try {
-    return await window.pywebview.api[method](...args);
+    // WebView2 会先暴露空 api 对象，再陆续导出方法。用户首次点击时等待短暂时间，
+    // 避免把尚未导出的预检方法误判为失败，造成需要点第二次的错觉。
+    const fn = await waitForApiMethod(method);
+    if (typeof fn !== 'function') {
+      // 桥接对象先于方法列表出现时属于启动中，不反复弹出误导性的异常。
+      if (!bridgeErrorShown) {
+        bridgeErrorShown = true;
+        toast('本地接口仍在初始化，请稍后重试。', 'notice');
+      }
+      return null;
+    }
+    bridgeErrorShown = false;
+    return await fn(...args);
   } catch (e) {
     toast('调用失败: ' + e, 'err');
     return null;
   }
+}
+function escapeHtml(value) {
+  const box = document.createElement('span');
+  box.textContent = value || '';
+  return box.innerHTML;
 }
 
 function toast(msg, type='') {
@@ -847,6 +1180,37 @@ function toast(msg, type='') {
   el.textContent = msg;
   document.getElementById('toasts').appendChild(el);
   setTimeout(() => el.remove(), 3200);
+}
+
+async function loadCommunityExperiments() {
+  const settings = await api('get_community_experiments');
+  if (!settings) return;
+  communityExperiments = { ...communityExperiments, ...settings };
+  const route = document.getElementById('enable-session-routing');
+  const appearance = document.getElementById('enable-local-appearance');
+  if (route) route.checked = !!communityExperiments.session_routing;
+  if (appearance) appearance.checked = !!communityExperiments.local_appearance;
+  renderRouteList();
+}
+async function toggleCommunityExperiment(feature, enabled) {
+  if (enabled) {
+    const message = feature === 'session_routing'
+      ? '会话路由是非官方实验功能，Codex 更新后可能失效。它会通过 app-server 请求设置所选会话，且只允许在 Codex 完全退出时操作。你还需要自行遵守上游供应商、地区、额度与计费规则。确定启用吗？'
+      : '本地外观实验会在你确认后通过本机 127.0.0.1 调试端口临时注入受控 CSS。它不修改安装文件、账号或会话内容，关闭或更新 Codex 后会失效。确定启用吗？';
+    if (!confirm(message)) {
+      const input = document.getElementById(feature === 'session_routing' ? 'enable-session-routing' : 'enable-local-appearance');
+      if (input) input.checked = false;
+      return;
+    }
+  }
+  const result = await api('set_community_experiment', feature, enabled);
+  if (!result || !result.ok) {
+    toast(result ? result.error : '无法保存实验设置', 'err');
+    return loadCommunityExperiments();
+  }
+  communityExperiments = result.features;
+  renderRouteList();
+  toast(enabled ? '已启用本地实验功能' : '已关闭本地实验功能', 'ok');
 }
 
 /* ---------- 状态 ---------- */
@@ -867,6 +1231,27 @@ async function refreshStatus() {
   sd.textContent = st.proxy_running ? ('运行中 (' + (st.proxy_url || '本地端口') + ')') : '未启动';
   const proxyDot = pd.previousElementSibling;
   if (proxyDot) proxyDot.className = 'dot ' + (st.proxy_running ? 'green' : 'gray');
+}
+async function loadDiagnostics() {
+  const data = await api('get_diagnostics');
+  const target = document.getElementById('diagnostics-content');
+  if (!target) return;
+  if (!data) {
+    target.innerHTML = '<div class="empty">无法读取本地诊断信息</div>';
+    return;
+  }
+  const items = [
+    ['数据目录', data.data_dir],
+    ['备份目录', data.backup_dir],
+    ['供应商配置', `${data.provider_count} 个`],
+    ['已保存会话路由', `${data.route_count} 条`],
+    ['操作备份', `${data.backup_count} 份`],
+    ['Codex 状态', data.codex_running ? '运行中' : '已退出'],
+    ['会话路由实验', data.community_experiments?.session_routing ? '已启用' : '默认关闭'],
+    ['本地外观实验', data.community_experiments?.local_appearance ? '已启用' : '默认关闭'],
+    ['外观参数文件', data.appearance_saved ? '已保存' : '尚未保存'],
+  ];
+  target.innerHTML = `<div class="model-list">${items.map(([k, v]) => `<div class="chip"><strong>${esc(k)}</strong>　${esc(v)}</div>`).join('')}</div>`;
 }
 function dot(color){ const s=document.createElement('span'); s.className='dot '+color; return s; }
 function esc(v){ const d=document.createElement('div'); d.textContent=String(v??''); return d.innerHTML; }
@@ -910,10 +1295,10 @@ function renderProviders() {
       <div class="provider-info">
         <div class="provider-name-row">
           <span class="p-name">${esc(p.name)}</span>
-          <span class="kind-tag ${p.kind}">${({official:'官方',direct:'直连',relay:'中转'})[p.kind]||'中转'}</span>
+          <span class="kind-tag ${p.kind}">${({official:'官方',direct:'API',relay:'API',local:'本地'})[p.kind]||'API'}</span>
           ${p.current ? '<span class="p-cur">当前</span>' : ''}
         </div>
-        <div class="provider-route"><strong>${esc(p.model||'未设置模型')}</strong> · 思考${effortLabel(p.reasoning_effort)} · ${p.proxy?'本地协议翻译':'Responses 直连'}</div>
+        <div class="provider-route"><strong>${esc(p.model||'未设置模型')}</strong> · 思考${effortLabel(p.reasoning_effort)} · ${p.proxy?'本地协议翻译 API':'原生 Responses API'}</div>
       </div>
       <span class="selection-mark"></span>
       <button class="btn sm ghost p-edit" data-edit-provider="${esc(p.id)}" title="编辑供应商">✎</button>
@@ -935,18 +1320,22 @@ function selectProvider(id) {
 }
 function syncProviderActions() {
   const selected = providers.find(p => p.id === selectedProviderId);
-  const ids = ['btn-switch','btn-diagnose','btn-test','btn-edit','btn-delete'];
+  const ids = ['btn-switch','btn-diagnose','btn-edit','btn-delete'];
   ids.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = !selected; });
   const del = document.getElementById('btn-delete');
-  if (del) del.disabled = !selected || selected.id === 'openai';
+  if (del) del.disabled = !selected || selected.id === 'openai' || selected.current;
   const hint = document.getElementById('provider-action-hint');
-  if (hint) hint.textContent = selected ? `已选：${selected.name}` : '选择一个通道后可进行操作';
+  if (hint) hint.textContent = selected
+    ? (selected.current ? `已选：${selected.name}（当前全局 API，请先切换后再删除）` : `已选：${selected.name}`)
+    : '选择一个 API 后可进行操作';
+  const all = document.getElementById('btn-test-all');
+  if (all) all.disabled = allProvidersTesting || !providers.length;
 }
 async function switchSelected() {
   if (!selectedProviderId) return toast('请先选择供应商', 'err');
   const r = await api('switch_provider', selectedProviderId);
   if (!r || !r.ok) return toast(r ? r.error : '切换失败', 'err');
-  toast(`已切换到【${r.name}】` + (r.followed ? `，同步 ${r.followed} 个跟随会话` : '') + '；重启 Codex 生效', 'ok');
+  toast(`已切换到【${r.name}】；新会话将在重启 Codex 后使用该通道`, 'ok');
   await loadProviders();
   await loadSessions();  // 切换后自动刷新会话列表
 }
@@ -963,6 +1352,39 @@ async function testSelected() {
   const r = await api('test_provider_connection', selectedProviderId);
   if (!r || !r.ok) return toast(r ? r.error : '连接失败', 'err');
   toast(r.message, 'ok');
+}
+async function testAllProviders() {
+  if (allProvidersTesting) return;
+  if (!providers.length) return toast('当前没有可检测的通道', 'notice');
+  allProvidersTesting = true;
+  const button = document.getElementById('btn-test-all');
+  if (button) button.textContent = '检测中…';
+  syncProviderActions();
+  toast(`正在检测 ${providers.length} 个通道，请稍候…`);
+  try {
+    const report = await api('test_all_provider_connections');
+    if (!report || !report.ok) return toast(report ? report.error : '批量检测失败', 'err');
+    showConnectionReport(report.results || []);
+  } finally {
+    allProvidersTesting = false;
+    if (button) button.textContent = '全部检测';
+    syncProviderActions();
+  }
+}
+function showConnectionReport(results) {
+  const summary = document.getElementById('connection-summary');
+  const list = document.getElementById('connection-results');
+  const success = results.filter(item => item.ok).length;
+  summary.innerHTML = `<span class="total">共 ${results.length} 个通道</span><span class="success">成功 ${success}</span><span class="failure">需处理 ${results.length - success}</span>`;
+  list.innerHTML = results.map(item => `
+    <div class="connection-result ${item.ok ? '' : 'failed'}">
+      <span class="result-mark">${item.ok ? '✓' : '!'}</span>
+      <div><strong>${esc(item.name)}</strong><small>${esc(item.ok ? item.message : item.error)}</small></div>
+    </div>`).join('') || '<div class="empty">没有检测结果</div>';
+  document.getElementById('connection-report-modal').classList.add('show');
+}
+function closeConnectionReport() {
+  document.getElementById('connection-report-modal').classList.remove('show');
 }
 async function editSelected() {
   let p = providers.find(x => x.id === selectedProviderId);
@@ -981,42 +1403,32 @@ async function fetchModels() {
   toast('正在获取模型列表…');
   const r = await api('get_models', url, key);
   if (!r || !r.ok) return toast(r ? ('获取失败: ' + r.error) : '获取失败', 'err');
-  // 智能筛选：优先用预设列表 ∩ API 真实；否则按供应商名称关键词识别厂商
-  const presetLabel = document.getElementById('pm-preset').value;
-  const preset = window._presetData && window._presetData.find(x => x.label === presetLabel);
-  let models = r.models;
-  let note = '';
-  if (preset && preset.models && preset.models.length) {
-    const presetSet = new Set(preset.models);
-    const filtered = r.models.filter(m => presetSet.has(m));
-    if (filtered.length) {
-      models = filtered;
-      note = `已筛选【${presetLabel}】真实可调 ${filtered.length} 个`;
-    } else {
-      models = preset.models;
-      note = `API 返回的都不在预设列表（可能改名/下架），使用预设固定列表 ${models.length} 个`;
-    }
-  } else {
-    // 按供应商名称识别厂商（编辑已有供应商时预设禁用，这里兜底），用预设的精简前沿列表
-    const name = (document.getElementById('pm-name').value || '').toLowerCase();
-    let presetMatch = null;
-    if (name.includes('千问') || name.includes('qwen') || name.includes('通义')) presetMatch = (window._presetData||[]).find(x => x.label.includes('通义千问'));
-    else if (name.includes('glm') || name.includes('智谱')) presetMatch = (window._presetData||[]).find(x => x.label.includes('GLM'));
-    else if (name.includes('kimi') || name.includes('月之暗面') || name.includes('moonshot')) presetMatch = (window._presetData||[]).find(x => x.label.includes('Kimi'));
-    else if (name.includes('deepseek') || name.includes('深度')) presetMatch = (window._presetData||[]).find(x => x.label.includes('DeepSeek'));
-    else if (name.includes('minimax')) presetMatch = (window._presetData||[]).find(x => x.label.includes('MiniMax'));
-    if (presetMatch && presetMatch.models && presetMatch.models.length) {
-      const filtered = r.models.filter(m => presetMatch.models.includes(m));
-      models = filtered.length ? filtered : presetMatch.models;
-      note = `已按「${name}」显示 ${models.length} 个前沿模型（其余请手动输入）`;
-    } else {
-      note = `API 完整 ${models.length} 个（未识别厂商，按需选择）`;
-    }
-  }
+  // 不再用内置预设过滤真实结果：新模型一旦由服务端返回，立即可见。
+  // 后端按创建时间排序；未提供创建时间的服务保留其原始顺序。
+  const rawModels = Array.isArray(r.models) ? r.models : [];
+  const allModels = rawModels.map(item => typeof item === 'string' ? item : item.id).filter(Boolean);
+  const models = allModels.slice(0, 24);
+  const note = allModels.length > models.length
+    ? `已显示 API 优先返回的 24 个模型；其余 ${allModels.length - models.length} 个旧型号可直接手动输入`
+    : `已显示 API 实时返回的 ${models.length} 个模型`;
   const cur = document.getElementById('pm-model').value.trim();
   if (!cur && models.length) document.getElementById('pm-model').value = models[0];
   renderModelChips(models, cur);
   toast(note, 'ok');
+}
+async function detectProtocol() {
+  const url = document.getElementById('pm-url').value.trim();
+  const key = document.getElementById('pm-key').value.trim();
+  const model = document.getElementById('pm-model').value.trim();
+  if (!url || !key || !model) return toast('请先填 Base URL、API Key 和模型', 'err');
+  if (!confirm('将向该服务发送一次最小 /responses 请求用于识别协议，可能产生极少量 token。继续吗？')) return;
+  toast('正在检测协议…');
+  const result = await api('detect_protocol', url, key, model);
+  if (!result || !result.ok) return toast(result ? result.error : '协议检测失败', 'err');
+  document.getElementById('pm-proxy').checked = !!result.proxy;
+  document.getElementById('pm-wire').value = 'responses';
+  toggleUpstream();
+  toast(result.message, result.proxy ? 'notice' : 'ok');
 }
 function renderModelChips(models, current) {
   const box = document.getElementById('model-list');
@@ -1062,8 +1474,10 @@ async function initPresets() {
 }
 function openProviderModal(p) {
   editingProvider = p || null;
+  const builtinOfficial = p && p.id === 'openai';
   document.getElementById('pm-title').textContent = p ? '编辑供应商' : '添加供应商';
   document.getElementById('pm-preset').disabled = !!p;
+  document.getElementById('pm-kind').disabled = !!builtinOfficial;
   document.getElementById('pm-kind').value = p ? (p.kind||'relay') : 'relay';
   document.getElementById('pm-name').value = p ? p.name : '';
   document.getElementById('pm-url').value = p ? (p.base_url||'') : '';
@@ -1074,6 +1488,10 @@ function openProviderModal(p) {
   document.getElementById('pm-wire').value = p ? (p.wire_api||'responses') : 'responses';
   document.getElementById('pm-proxy').checked = p ? !!p.proxy : false;
   document.getElementById('pm-upstream').value = p ? (p.upstream_base||'') : '';
+  document.getElementById('pm-name').disabled = !!builtinOfficial;
+  document.getElementById('pm-url').disabled = !!builtinOfficial;
+  document.getElementById('pm-key').disabled = !!builtinOfficial;
+  document.getElementById('pm-proxy').disabled = !!builtinOfficial;
   // 编辑时显示当前模型（单 chip），点"获取模型"后会刷新为完整列表
   renderModelChips(p && p.model ? [p.model] : [], p ? p.model : '');
   toggleUpstream();
@@ -1201,34 +1619,129 @@ function renderRouteList() {
   }
   document.getElementById('route-count').textContent = sessions.length;
   document.getElementById('route-selected').textContent = `已选 ${checkedRoutes.size} 个会话`;
-  document.getElementById('btn-route-fixed').disabled = !checkedRoutes.size;
-  document.getElementById('btn-route-follow').disabled = !checkedRoutes.size;
+  document.getElementById('btn-route-fixed').disabled = routeActionBusy || !checkedRoutes.size || !communityExperiments.session_routing;
+  document.getElementById('btn-route-follow').disabled = routeActionBusy || !checkedRoutes.size || !communityExperiments.session_routing;
 }
 function toggleRoute(id) {
   if (checkedRoutes.has(id)) checkedRoutes.delete(id); else checkedRoutes.add(id);
   renderRouteList();
 }
+function setRouteActionBusy(busy, label = '') {
+  routeActionBusy = busy;
+  const fixed = document.getElementById('btn-route-fixed');
+  const follow = document.getElementById('btn-route-follow');
+  if (fixed) fixed.textContent = busy && label ? label : '固定到目标通道';
+  if (follow) follow.textContent = busy && label ? '请稍候…' : '同步到当前默认通道';
+  renderRouteList();
+}
+
 async function doFixRoute() {
   if (!checkedRoutes.size) return toast('请先勾选会话', 'err');
+  if (!communityExperiments.session_routing) return toast('请先确认启用“会话路由实验”', 'notice');
+  if (routeActionBusy) return;
   const pid = document.getElementById('route-provider').value;
   const provider = providers.find(p => p.id === pid);
   if (!provider) return toast('请选择目标通道', 'err');
-  if (!confirm(`将 ${checkedRoutes.size} 个会话固定到「${provider.name}」？\n\n请先完全退出 Codex（含托盘）。操作将使用官方会话接口，并自动备份。`)) return;
-  const r = await api('switch_sessions', [...checkedRoutes], pid);
-  if (!r || !r.ok) return toast(r ? r.error : '会话通道切换失败', 'err');
-  toast(`已固定 ${r.count} 个会话到「${provider.name}」`, 'ok');
-  checkedRoutes.clear();
-  await loadSessions();
+  const modelOverride = document.getElementById('route-model').value.trim();
+  const effortOverride = document.getElementById('route-effort').value;
+  setRouteActionBusy(true, '正在准备确认…');
+  setRouteOperationStatus('正在预检会话和目标通道…', 'busy');
+  try {
+    const preview = await api('preview_session_route', [...checkedRoutes], pid, modelOverride, effortOverride);
+    if (!preview || !preview.ok) {
+      setRouteOperationStatus(preview ? preview.error : '无法完成会话预检', 'error');
+      return;
+    }
+    if (preview.codex_running) {
+      setRouteOperationStatus('请先完全退出 Codex（含托盘）再操作。', 'error');
+      return;
+    }
+    const names = preview.targets.map(item => `· ${item.title || item.id}`).join('\n');
+    if (!confirm(`非官方会话路由实验\n\n目标通道：${preview.provider}\n目标模型：${preview.model}\n思考强度：${effortLabel(preview.reasoning_effort)}\n\n待修改会话：\n${names}\n\n操作前会备份；失败时尝试恢复。第三方条款、地区、额度和计费由你自行负责。继续吗？`)) {
+      setRouteOperationStatus('已取消本次设置。', '');
+      return;
+    }
+    setRouteActionBusy(true, '后台处理中…');
+    setRouteOperationStatus('已提交，正在后台请求 Codex 保存通道…', 'busy');
+    const submitted = await api('start_route_operation', [...checkedRoutes], pid, 'fixed', modelOverride, effortOverride);
+    if (!submitted || !submitted.ok) {
+      setRouteOperationStatus(submitted ? submitted.error : '无法启动后台会话通道切换', 'error');
+      return;
+    }
+    await pollRouteOperation(submitted.operation_id, `已成功固定 ${checkedRoutes.size} 个会话到「${provider.name}」。`);
+  } finally {
+    setRouteActionBusy(false);
+  }
 }
 async function doFollowRoute() {
   if (!checkedRoutes.size) return toast('请先勾选会话', 'err');
-  if (!confirm(`让 ${checkedRoutes.size} 个会话改为跟随全局默认通道？\n\n本次会先同步到当前全局通道，以后切换全局时继续自动同步。请先完全退出 Codex（含托盘）。`)) return;
-  const r = await api('follow_sessions', [...checkedRoutes]);
-  if (!r || !r.ok) return toast(r ? r.error : '设置跟随全局失败', 'err');
-  const provider = providers.find(p => p.id === r.provider);
-  toast(`已设置 ${r.count} 个跟随会话` + (provider ? `，当前同步到「${provider.name}」` : ''), 'ok');
-  checkedRoutes.clear();
-  await loadSessions();
+  if (!communityExperiments.session_routing) return toast('请先确认启用“会话路由实验”', 'notice');
+  if (routeActionBusy) return;
+  const current = providers.find(p => p.current);
+  if (!current) return toast('当前默认通道不可用', 'err');
+  setRouteActionBusy(true, '正在准备确认…');
+  setRouteOperationStatus('正在预检会话和当前默认通道…', 'busy');
+  try {
+    const preview = await api('preview_session_route', [...checkedRoutes], current.id);
+    if (!preview || !preview.ok) {
+      setRouteOperationStatus(preview ? preview.error : '无法完成会话预检', 'error');
+      return;
+    }
+    if (preview.codex_running) {
+      setRouteOperationStatus('请先完全退出 Codex（含托盘）再操作。', 'error');
+      return;
+    }
+    const names = preview.targets.map(item => `· ${item.title || item.id}`).join('\n');
+    if (!confirm(`非官方会话路由实验\n\n目标通道：${preview.provider}\n目标模型：${preview.model}\n思考强度：${effortLabel(preview.reasoning_effort)}\n\n待修改会话：\n${names}\n\n以后切换全局不会自动改写已有会话；如需再次同步，请在此手动操作。继续吗？`)) {
+      setRouteOperationStatus('已取消本次设置。', '');
+      return;
+    }
+    setRouteActionBusy(true, '后台处理中…');
+    setRouteOperationStatus('已提交，正在后台请求 Codex 保存通道…', 'busy');
+    const submitted = await api('start_route_operation', [...checkedRoutes], current.id, 'follow');
+    if (!submitted || !submitted.ok) {
+      setRouteOperationStatus(submitted ? submitted.error : '无法启动后台会话通道同步', 'error');
+      return;
+    }
+    await pollRouteOperation(submitted.operation_id, `已成功同步 ${checkedRoutes.size} 个会话到当前默认通道。`);
+  } finally {
+    setRouteActionBusy(false);
+  }
+}
+function setRouteOperationStatus(text, tone = '') {
+  const status = document.getElementById('route-operation-status');
+  if (!status) return;
+  status.textContent = text;
+  status.className = `route-operation-status ${tone}`.trim();
+}
+async function pollRouteOperation(operationId, successText) {
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    const state = await api('get_route_operation', operationId);
+    if (!state || !state.ok) {
+      setRouteOperationStatus(state ? state.error : '无法读取后台操作状态', 'error');
+      return;
+    }
+    if (state.state === 'queued' || state.state === 'running') {
+      setRouteOperationStatus(state.message || '后台处理中…', 'busy');
+      await delay(500);
+      continue;
+    }
+    if (state.state === 'success') {
+      toast(successText, 'ok');
+      setRouteOperationStatus(successText + (state.backup ? `（备份：${state.backup}）` : ''), 'ok');
+      checkedRoutes.clear();
+      await loadSessions();
+      return;
+    }
+    if (state.state === 'unsupported') {
+      setRouteOperationStatus(`未确认保存：${state.message || 'Codex 未返回可验证的落盘状态'}。请刷新会话核对，必要时使用备份恢复。`, 'error');
+      return;
+    }
+    setRouteOperationStatus(state.message || state.error || '会话通道切换失败。请查看备份并刷新会话后重试。', 'error');
+    return;
+  }
+  setRouteOperationStatus('后台操作等待超时，仍可能在 Codex 中继续。请稍后刷新会话核对结果。', 'error');
 }
 function toggleSession(id) {
   if (checkedSessions.has(id)) checkedSessions.delete(id); else checkedSessions.add(id);
@@ -1240,23 +1753,587 @@ function toggleArchived(id) {
 }
 async function doArchive() {
   if (!checkedSessions.size) return toast('请先勾选会话', 'err');
-  if (!confirm(`归档 ${checkedSessions.size} 个会话？\n\n将调用 Codex 官方归档接口；操作前会备份数据库和会话文件。请先完全退出 Codex（含托盘）。`)) return;
+  if (!confirm(`归档 ${checkedSessions.size} 个会话？\n\n将通过 Codex app-server 执行归档；操作前会备份数据库和会话文件。请先完全退出 Codex（含托盘）。`)) return;
   const r = await api('archive_sessions', [...checkedSessions]);
   if (!r || !r.ok) return toast(r ? r.error : '归档失败', 'err');
-  toast(`官方归档成功 ${r.count} 个（备份 ${r.backup}）`, 'ok');
+  toast(`归档完成 ${r.count} 个（备份 ${r.backup}）`, 'ok');
   checkedSessions.clear();
   loadSessions();
 }
 async function doUnarchive() {
   if (!checkedArchived.size) return toast('请先勾选已归档会话', 'err');
-  if (!confirm(`恢复 ${checkedArchived.size} 个会话到 Codex 左侧列表？\n\n将调用 Codex 官方恢复接口，操作前会自动备份。请先完全退出 Codex（含托盘）。`)) return;
+  if (!confirm(`恢复 ${checkedArchived.size} 个会话到 Codex 左侧列表？\n\n将通过 Codex app-server 执行恢复，操作前会自动备份。请先完全退出 Codex（含托盘）。`)) return;
   const r = await api('unarchive_sessions', [...checkedArchived]);
   if (!r || !r.ok) return toast(r ? r.error : '恢复失败', 'err');
-  toast(`官方恢复成功 ${r.count} 个（备份 ${r.backup}）`, 'ok');
+  toast(`恢复完成 ${r.count} 个（备份 ${r.backup}）`, 'ok');
   checkedArchived.clear();
   loadSessions();
 }
+async function repairArchiveIndex() {
+  if (!confirm('实验兼容修复：仅处理 state 中已确认 archived=1 的会话；操作前备份 state、catalog 和 session_index，完成后验证是否仍残留。不会删除未归档或未知数据。请确认 Codex 已完全退出（含托盘）。')) return;
+  const r = await api('repair_archived_session_index');
+  if (!r || !r.ok) return toast(r ? r.error : '修正失败', 'err');
+  toast(`已核对 ${r.count} 个已归档会话，清理 ${r.catalog_count} 条侧栏残留（备份 ${r.backup}）`, 'ok');
+}
 
+/* ---------- 实验外观 ---------- */
+let backgroundLivePreview = false;
+let backgroundApplyTimer = null;
+let backgroundApplying = false;
+let backgroundApplyQueued = false;
+let projectionLayers = [];
+let projectionInteraction = null;
+let projectionMode = 'scale';
+let projectionStudioOriginal = null;
+
+function setProjectionMode(mode) {
+  projectionMode = mode === 'crop' ? 'crop' : 'scale';
+  document.getElementById('projection-mode-scale')?.classList.toggle('active', projectionMode === 'scale');
+  document.getElementById('projection-mode-crop')?.classList.toggle('active', projectionMode === 'crop');
+  document.querySelectorAll('[data-projection-mode]').forEach(button => {
+    button.classList.toggle('active', button.dataset.projectionMode === projectionMode);
+  });
+  const help = document.getElementById('projection-mode-help');
+  const button = document.getElementById('projection-apply-btn');
+  const note = document.getElementById('projection-help');
+  if (help) help.textContent = projectionMode === 'crop' ? '图片铺满选中区域，超出的边缘会被裁掉。' : '完整图片等比缩放进选中区域，不裁掉内容。';
+  if (button) button.textContent = projectionMode === 'crop' ? '应用截取投影' : '应用缩放投影';
+  if (note) note.textContent = projectionMode === 'crop' ? '铺满截取只改变显示，不修改原文件。' : '完整缩放可能在不规则区域内留出少量空白。';
+  document.getElementById('media-fit').value = projectionMode === 'crop' ? 'cover' : 'contain';
+  updateProjectionPreview();
+}
+function projectionDisplayValues() {
+  return {
+    scale: Number(document.getElementById('background-scale')?.value || 100),
+    height: Number(document.getElementById('background-height')?.value || 100),
+    x: Number(document.getElementById('background-position-x')?.value || 50),
+    y: Number(document.getElementById('background-position-y')?.value || 50),
+    fit: document.getElementById('media-fit')?.value || 'cover',
+  };
+}
+function clampProjection(value, minimum, maximum) {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+function projectionPoint(event, stage) {
+  const bounds = stage.getBoundingClientRect();
+  return {
+    x: clampProjection((event.clientX - bounds.left) / bounds.width, 0, 1),
+    y: clampProjection((event.clientY - bounds.top) / bounds.height, 0, 1),
+  };
+}
+function openProjectionStudio() {
+  if (!document.getElementById('background-image-path')?.value.trim()) {
+    return toast('请先选择本地图片或动态图', 'notice');
+  }
+  projectionStudioOriginal = {
+    layers: projectionLayers.map(layer => ({...layer, points: layer.points.map(point => ({...point}))})),
+    mode: projectionMode,
+    mediaFit: document.getElementById('media-fit').value,
+    gradientEnabled: document.getElementById('gradient-enabled').checked,
+    gradientStart: document.getElementById('gradient-start').value,
+    gradientEnd: document.getElementById('gradient-end').value,
+    gradientOpacity: document.getElementById('gradient-opacity').value,
+  };
+  document.getElementById('projection-studio-modal')?.classList.add('show');
+  requestAnimationFrame(() => {
+    initProjectionSelector();
+    if (!projectionLayers.length) startRectSelection();
+    updateProjectionPreview();
+    drawProjection();
+  });
+}
+function closeProjectionStudio() {
+  document.getElementById('projection-studio-modal')?.classList.remove('show');
+}
+function cancelProjectionStudio() {
+  const saved = projectionStudioOriginal;
+  if (saved) {
+    projectionLayers = saved.layers;
+    projectionMode = saved.mode;
+    document.getElementById('media-fit').value = saved.mediaFit;
+    document.getElementById('gradient-enabled').checked = saved.gradientEnabled;
+    document.getElementById('gradient-start').value = saved.gradientStart;
+    document.getElementById('gradient-end').value = saved.gradientEnd;
+    document.getElementById('gradient-opacity').value = saved.gradientOpacity;
+    setProjectionMode(projectionMode);
+  }
+  projectionStudioOriginal = null;
+  closeProjectionStudio();
+  updateBackgroundValues(false);
+}
+function drawProjection() {
+  const canvas = document.getElementById('projection-canvas');
+  const stage = document.getElementById('projection-stage');
+  const label = document.getElementById('projection-selection-label');
+  if (!canvas || !stage || !label) return;
+  const bounds = stage.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.round(bounds.width * ratio));
+  canvas.height = Math.max(1, Math.round(bounds.height * ratio));
+  const context = canvas.getContext('2d');
+  context.scale(ratio, ratio);
+  context.clearRect(0, 0, bounds.width, bounds.height);
+  const layer = projectionLayers[0];
+  if (!layer?.points || layer.points.length < 2) { label.textContent = '未选择区域'; return; }
+  const first = layer.points[0]; const second = layer.points[1];
+  const left = Math.min(first.x, second.x) * bounds.width;
+  const top = Math.min(first.y, second.y) * bounds.height;
+  const width = Math.max(12, Math.abs(second.x - first.x) * bounds.width);
+  const height = Math.max(12, Math.abs(second.y - first.y) * bounds.height);
+  context.save();
+  context.fillStyle = 'rgba(43,185,132,.14)'; context.fillRect(left, top, width, height);
+  context.strokeStyle = '#22a875'; context.lineWidth = 3; context.setLineDash([8, 5]); context.strokeRect(left, top, width, height);
+  context.setLineDash([]); context.fillStyle = '#ffffff'; context.strokeStyle = '#22a875';
+  context.fillRect(left + width - 7, top + height - 7, 14, 14); context.strokeRect(left + width - 7, top + height - 7, 14, 14);
+  context.restore();
+  label.textContent = `已选择区域 · ${projectionMode === 'crop' ? '铺满截取' : '完整缩放'}`;
+}
+function projectionBounds(layer) {
+  const [a, b] = layer.points;
+  return {left: Math.min(a.x, b.x), top: Math.min(a.y, b.y), right: Math.max(a.x, b.x), bottom: Math.max(a.y, b.y)};
+}
+function startRectSelection() {
+  projectionInteraction = {kind: 'new'};
+  const hint = document.getElementById('projection-editor-help');
+  if (hint) hint.textContent = '请在下方布局参考上拖动，画出新的投影方框。';
+}
+function clearProjectionSelection() {
+  projectionLayers = [];
+  projectionInteraction = null;
+  const hint = document.getElementById('projection-editor-help');
+  if (hint) hint.textContent = '已取消投影。点击“确认预览”后会按普通背景显示整张图片。';
+  updateProjectionPreview();
+}
+function initProjectionSelector() {
+  const stage = document.getElementById('projection-stage');
+  if (!stage || stage.dataset.bound) return;
+  stage.dataset.bound = '1';
+  stage.addEventListener('pointerdown', event => {
+    if (!document.getElementById('background-image-path')?.value.trim()) return;
+    const point = projectionPoint(event, stage);
+    stage.setPointerCapture?.(event.pointerId);
+    const layer = projectionLayers[0];
+    const hasRect = layer?.points?.length >= 2;
+    if (projectionInteraction?.kind === 'new' || !hasRect) {
+      projectionLayers = [{id: 'projection-rect', type: 'rect', enabled: true, points: [point, point]}];
+      projectionInteraction = {kind: 'draw', start: point};
+    } else {
+      const bounds = projectionBounds(layer);
+      const resize = Math.abs(point.x - bounds.right) < .035 && Math.abs(point.y - bounds.bottom) < .035;
+      const inside = point.x >= bounds.left && point.x <= bounds.right && point.y >= bounds.top && point.y <= bounds.bottom;
+      projectionInteraction = resize ? {kind: 'resize'} : inside ? {kind: 'move', start: point, original: layer.points.map(item => ({...item}))} : {kind: 'new'};
+      if (projectionInteraction.kind === 'new') {
+        projectionLayers = [{id: 'projection-rect', type: 'rect', enabled: true, points: [point, point]}];
+        projectionInteraction = {kind: 'draw', start: point};
+      }
+    }
+    updateProjectionPreview();
+  });
+  stage.addEventListener('pointermove', event => {
+    if (!projectionInteraction) return;
+    const point = projectionPoint(event, stage);
+    const layer = projectionLayers[0];
+    if (!layer) return;
+    if (projectionInteraction.kind === 'move') {
+      const dx = point.x - projectionInteraction.start.x; const dy = point.y - projectionInteraction.start.y;
+      const original = projectionInteraction.original;
+      const minX = Math.min(...original.map(item => item.x)); const maxX = Math.max(...original.map(item => item.x));
+      const minY = Math.min(...original.map(item => item.y)); const maxY = Math.max(...original.map(item => item.y));
+      const clampedX = Math.max(-minX, Math.min(1 - maxX, dx)); const clampedY = Math.max(-minY, Math.min(1 - maxY, dy));
+      layer.points = original.map(item => ({x: item.x + clampedX, y: item.y + clampedY}));
+    } else {
+      layer.points[1] = point;
+    }
+    updateProjectionPreview();
+  });
+  const finish = () => {
+    const layer = projectionLayers[0];
+    if (layer && Math.abs(layer.points[1].x - layer.points[0].x) < .02) layer.points[1].x = Math.min(1, layer.points[0].x + .16);
+    if (layer && Math.abs(layer.points[1].y - layer.points[0].y) < .02) layer.points[1].y = Math.min(1, layer.points[0].y + .16);
+    projectionInteraction = null;
+    const hint = document.getElementById('projection-editor-help');
+    if (hint) hint.textContent = '拖动方框可移动位置；拖动右下角的小方块可调整大小。';
+    updateProjectionPreview();
+  };
+  stage.addEventListener('pointerup', finish);
+  stage.addEventListener('pointercancel', finish);
+}
+function applyProjectionSelection() {
+  if (!projectionLayers[0]?.points || projectionLayers[0].points.length < 2) return toast('请先在画布上拖动一个方框', 'notice');
+  document.getElementById('media-fit').value = projectionMode === 'crop' ? 'cover' : 'contain';
+  updateBackgroundValues();
+  setLiveBackgroundStatus(`已确认方框投影（${projectionMode === 'crop' ? '铺满截取' : '完整缩放'}）；现在可在主界面应用到 Codex。`, 'ok');
+  return true;
+}
+function finishProjectionStudio() {
+  if (projectionLayers.length && !applyProjectionSelection()) return;
+  if (!projectionLayers.length) {
+    updateBackgroundValues();
+    setLiveBackgroundStatus('已取消投影；图片会按普通背景显示。', 'ok');
+  }
+  projectionStudioOriginal = null;
+  closeProjectionStudio();
+}
+
+function updateBackgroundValues(schedule = true) {
+  document.getElementById('mask-value').textContent = document.getElementById('background-mask').value + '%';
+  document.getElementById('opacity-value').textContent = document.getElementById('panel-opacity').value + '%';
+  document.getElementById('sidebar-value').textContent = document.getElementById('sidebar-opacity').value + '%';
+  document.getElementById('toolbar-value').textContent = document.getElementById('toolbar-opacity').value + '%';
+  document.getElementById('thread-header-value').textContent = document.getElementById('thread-header-opacity').value + '%';
+  document.getElementById('card-value').textContent = document.getElementById('card-opacity').value + '%';
+  document.getElementById('blur-value').textContent = document.getElementById('background-blur').value + ' px';
+  document.getElementById('scale-value').textContent = document.getElementById('background-scale').value + '%';
+  document.getElementById('height-value').textContent = document.getElementById('background-height').value + '%';
+  document.getElementById('position-x-value').textContent = document.getElementById('background-position-x').value + '%';
+  document.getElementById('position-y-value').textContent = document.getElementById('background-position-y').value + '%';
+  document.getElementById('gradient-value').textContent = document.getElementById('gradient-opacity').value + '%';
+  updateBackgroundPreview();
+  updateBackgroundSummary();
+  if (schedule) scheduleLiveBackgroundApply();
+}
+function resetBackgroundSettings() {
+  const defaults = {
+    'background-mask':42, 'panel-opacity':58, 'sidebar-opacity':42,
+    'toolbar-opacity':28, 'thread-header-opacity':28, 'card-opacity':24,
+    'background-blur':6, 'background-scale':100, 'background-height':100,
+    'background-position-x':50, 'background-position-y':50,
+  };
+  Object.entries(defaults).forEach(([id, value]) => { document.getElementById(id).value = value; });
+  document.getElementById('media-fit').value = 'cover';
+  document.getElementById('animated-gif').checked = false;
+  document.getElementById('animated-mp4').checked = false;
+  document.getElementById('gradient-enabled').checked = false;
+  document.getElementById('gradient-start').value = '#5868df';
+  document.getElementById('gradient-end').value = '#2bb984';
+  document.getElementById('gradient-opacity').value = 28;
+  updateBackgroundValues();
+  setLiveBackgroundStatus('已恢复默认参数；应用或开启实时预览后才会写入当前背景版。');
+}
+function useBackgroundClearPreset() {
+  document.getElementById('background-mask').value = 0;
+  document.getElementById('background-blur').value = 0;
+  document.getElementById('panel-opacity').value = 18;
+  document.getElementById('sidebar-opacity').value = 18;
+  document.getElementById('toolbar-opacity').value = 12;
+  document.getElementById('thread-header-opacity').value = 12;
+  document.getElementById('card-opacity').value = 18;
+  document.getElementById('media-fit').value = 'cover';
+  updateBackgroundValues();
+  setLiveBackgroundStatus('已套用背景清晰参数；可继续按需要微调。');
+}
+function useCrispBackground() {
+  document.getElementById('background-mask').value = 18;
+  document.getElementById('background-blur').value = 0;
+  document.getElementById('panel-opacity').value = 68;
+  document.getElementById('sidebar-opacity').value = 64;
+  document.getElementById('toolbar-opacity').value = 54;
+  document.getElementById('thread-header-opacity').value = 54;
+  document.getElementById('card-opacity').value = 76;
+  document.getElementById('media-fit').value = 'cover';
+  updateBackgroundValues();
+  setLiveBackgroundStatus('已套用无磨砂、文字清晰参数；可继续按需要微调。');
+}
+function setLiveBackgroundStatus(text, tone = '') {
+  const status = document.getElementById('background-live-status');
+  status.textContent = text;
+  status.style.color = tone === 'error' ? 'var(--red)' : tone === 'ok' ? 'var(--green)' : '';
+  const shortStatus = document.getElementById('background-live-status-short');
+  if (shortStatus) shortStatus.textContent = text;
+  const mode = document.getElementById('background-preview-mode');
+  if (mode) mode.textContent = backgroundLivePreview ? '已连接' : '未启动';
+}
+function scheduleLiveBackgroundApply() {
+  if (!backgroundLivePreview) return;
+  const imagePath = document.getElementById('background-image-path').value.trim();
+  if (!imagePath) return;
+  clearTimeout(backgroundApplyTimer);
+  backgroundApplyTimer = setTimeout(applyLiveBackgroundChanges, 420);
+}
+async function applyLiveBackgroundChanges() {
+  if (!backgroundLivePreview) return;
+  if (backgroundApplying) {
+    backgroundApplyQueued = true;
+    return;
+  }
+  backgroundApplying = true;
+  setLiveBackgroundStatus('正在实时更新当前 Codex…');
+  const r = await api('apply_background', readBackgroundForm(), false);
+  backgroundApplying = false;
+  if (!r || !r.ok) {
+    backgroundLivePreview = false;
+    document.getElementById('live-background-preview').checked = false;
+    setLiveBackgroundStatus('实时预览已暂停：' + (r ? r.error : '无法连接当前背景版 Codex'), 'error');
+    return;
+  }
+  setLiveBackgroundStatus('实时预览已开启：拖动滑块会自动更新当前 Codex。', 'ok');
+  if (backgroundApplyQueued) {
+    backgroundApplyQueued = false;
+    scheduleLiveBackgroundApply();
+  }
+}
+function readBackgroundForm() {
+  return {
+    image_path: document.getElementById('background-image-path').value.trim(),
+    codex_launch_path: document.getElementById('codex-launch-path').value.trim(),
+    background_mask: Number(document.getElementById('background-mask').value),
+    panel_opacity: Number(document.getElementById('panel-opacity').value),
+    sidebar_opacity: Number(document.getElementById('sidebar-opacity').value),
+    toolbar_opacity: Number(document.getElementById('toolbar-opacity').value),
+    thread_header_opacity: Number(document.getElementById('thread-header-opacity').value),
+    card_opacity: Number(document.getElementById('card-opacity').value),
+    blur: Number(document.getElementById('background-blur').value),
+    background_scale: Number(document.getElementById('background-scale').value),
+    background_height: Number(document.getElementById('background-height').value),
+    background_position_x: Number(document.getElementById('background-position-x').value),
+    background_position_y: Number(document.getElementById('background-position-y').value),
+    media_fit: document.getElementById('media-fit').value,
+    background_scope: 'whole',
+    border_opacity: 22,
+    corner_radius: 12,
+    titlebar_mode: 'normal',
+    compact_diff: false,
+    animated_gif: document.getElementById('animated-gif').checked,
+    animated_mp4: document.getElementById('animated-mp4').checked,
+    projection_mode: 'scale',
+    gradient_enabled: document.getElementById('gradient-enabled').checked,
+    gradient_type: 'linear',
+    gradient_color_start: document.getElementById('gradient-start').value,
+    gradient_color_end: document.getElementById('gradient-end').value,
+    gradient_opacity: Number(document.getElementById('gradient-opacity').value),
+    gradient_angle: 135,
+    projection_shape: 'none',
+    projection_points: [],
+    projection_layers: [],
+  };
+}
+function writeBackgroundForm(data) {
+  document.getElementById('background-image-path').value = data.image_path || '';
+  document.getElementById('codex-launch-path').value = data.codex_launch_path || '';
+  document.getElementById('background-mask').value = data.background_mask;
+  document.getElementById('panel-opacity').value = data.panel_opacity;
+  document.getElementById('sidebar-opacity').value = data.sidebar_opacity;
+  document.getElementById('toolbar-opacity').value = data.toolbar_opacity ?? 28;
+  document.getElementById('thread-header-opacity').value = data.thread_header_opacity ?? data.toolbar_opacity ?? 28;
+  document.getElementById('card-opacity').value = data.card_opacity ?? 24;
+  document.getElementById('background-blur').value = data.blur;
+  document.getElementById('background-scale').value = data.background_scale ?? 100;
+  document.getElementById('background-height').value = data.background_height ?? 100;
+  document.getElementById('background-position-x').value = data.background_position_x ?? 50;
+  document.getElementById('background-position-y').value = data.background_position_y ?? 50;
+  document.getElementById('media-fit').value = data.media_fit || 'cover';
+  document.getElementById('animated-gif').checked = data.animated_gif === true;
+  document.getElementById('animated-mp4').checked = data.animated_mp4 === true;
+  document.getElementById('gradient-enabled').checked = data.gradient_enabled === true;
+  document.getElementById('gradient-start').value = data.gradient_color_start || '#5868df';
+  document.getElementById('gradient-end').value = data.gradient_color_end || '#2bb984';
+  document.getElementById('gradient-opacity').value = data.gradient_opacity ?? 28;
+  // 公开界面不再提供投影画布；加载旧设置时也不恢复旧方框。
+  projectionLayers = [];
+  updateBackgroundValues(false);
+  updateBackgroundPreview();
+}
+function updateBackgroundPreview() {
+  const path = document.getElementById('background-image-path').value.trim();
+  const preview = document.getElementById('background-preview');
+  if (!path) {
+    preview.style.backgroundImage = '';
+    preview.innerHTML = '<span>尚未选择图片</span>';
+    updateBackgroundSummary();
+    return;
+  }
+  preview.style.backgroundImage = `url("${path.replaceAll('\\', '/')}")`;
+  const fullCover = document.getElementById('media-fit').value === 'cover'
+    && document.getElementById('background-scale').value === '100'
+    && document.getElementById('background-height').value === '100';
+  preview.style.backgroundSize = fullCover ? 'cover' : `${document.getElementById('background-scale').value}% ${document.getElementById('background-height').value}%`;
+  preview.style.backgroundPosition = `${document.getElementById('background-position-x').value}% ${document.getElementById('background-position-y').value}%`;
+  preview.style.backgroundRepeat = 'no-repeat';
+  preview.innerHTML = '<span>已选择本地图片</span>';
+  updateBackgroundSummary();
+}
+function selectedProjectionLayers() {
+  const layer = projectionLayers[0];
+  return layer?.type === 'rect' && Array.isArray(layer.points) && layer.points.length >= 2 ? [layer] : [];
+}
+function projectionResultBounds(layers) {
+  if (!layers.length) return {left:0, top:0, right:1, bottom:1, width:1, height:1};
+  const bounds = projectionBounds(layers[0]);
+  const left = clampProjection(bounds.left, 0, .98); const top = clampProjection(bounds.top, 0, .98);
+  const right = clampProjection(Math.max(left + .02, bounds.right), left + .02, 1);
+  const bottom = clampProjection(Math.max(top + .02, bounds.bottom), top + .02, 1);
+  return {left, top, right, bottom, width:right - left, height:bottom - top};
+}
+function hexToRgba(hex, alpha) {
+  const value = /^#[0-9a-f]{6}$/i.test(hex) ? hex.slice(1) : '000000';
+  return `rgba(${parseInt(value.slice(0,2),16)},${parseInt(value.slice(2,4),16)},${parseInt(value.slice(4,6),16)},${alpha})`;
+}
+function projectionGradientCss() {
+  const maskAlpha = Number(document.getElementById('background-mask')?.value || 0) / 100;
+  const base = `linear-gradient(rgba(246,250,255,${maskAlpha}),rgba(246,250,255,${maskAlpha}))`;
+  if (!document.getElementById('gradient-enabled')?.checked) return base;
+  const alpha = Number(document.getElementById('gradient-opacity')?.value || 0) / 100;
+  const start = hexToRgba(document.getElementById('gradient-start')?.value || '#5868df', alpha);
+  const end = hexToRgba(document.getElementById('gradient-end')?.value || '#2bb984', alpha);
+  return `${base}, linear-gradient(135deg, ${start}, ${end})`;
+}
+function updateProjectionPreview() {
+  initProjectionSelector();
+  const stage = document.getElementById('projection-stage');
+  const empty = document.getElementById('projection-empty');
+  const video = document.getElementById('projection-video');
+  const result = document.getElementById('projection-result-layer');
+  const path = document.getElementById('background-image-path')?.value.trim() || '';
+  if (!stage || !empty) return;
+  if (!path) {
+    stage.style.backgroundImage = '';
+    if (video) { video.pause(); video.removeAttribute('src'); video.hidden = true; }
+    if (result) { result.hidden = true; result.style.backgroundImage = ''; }
+    empty.hidden = false;
+    projectionLayers = [];
+    const label = document.getElementById('projection-selection-label');
+    if (label) label.textContent = '未选择';
+    return;
+  }
+  const isVideo = /\.mp4$/i.test(path);
+  const values = projectionDisplayValues();
+  const selected = selectedProjectionLayers();
+  const bounds = projectionResultBounds(selected);
+  const fit = projectionMode === 'crop' ? 'cover' : 'contain';
+  stage.style.backgroundImage = 'linear-gradient(135deg,#eaf0f6,#dce5ef)';
+  if (result) {
+    result.hidden = false;
+    result.style.inset = 'auto';
+    result.style.left = `${bounds.left * 100}%`; result.style.top = `${bounds.top * 100}%`;
+    result.style.width = `${bounds.width * 100}%`; result.style.height = `${bounds.height * 100}%`;
+    result.style.backgroundPosition = `${values.x}% ${values.y}%`;
+    result.style.backgroundSize = fit;
+    result.style.setProperty('--projection-gradient', projectionGradientCss());
+    result.style.webkitMaskImage = 'none'; result.style.maskImage = 'none';
+    result.style.webkitMaskSize = 'auto'; result.style.maskSize = 'auto';
+  }
+  if (isVideo && video) {
+    const source = `file:///${path.replaceAll('\\', '/')}`;
+    if (video.dataset.path !== path) { video.src = source; video.dataset.path = path; }
+    video.hidden = false;
+    video.style.objectFit = fit;
+    video.style.objectPosition = `${values.x}% ${values.y}%`;
+    video.play().catch(() => {});
+    if (result) result.style.backgroundImage = '';
+  } else {
+    if (video) { video.pause(); video.removeAttribute('src'); video.dataset.path = ''; video.hidden = true; }
+    if (result) result.style.backgroundImage = `url("${path.replaceAll('\\', '/')}")`;
+  }
+  empty.textContent = selected.length ? '' : '点击“重新框选”，再拖动一个方框选择投影区域';
+  empty.hidden = selected.length > 0;
+  drawProjection();
+}
+function updateBackgroundSummary() {
+  const path = document.getElementById('background-image-path')?.value.trim() || '';
+  const fileName = path ? path.split(/[\\/]/).pop() : '未选择背景';
+  const extension = path && fileName.includes('.') ? fileName.split('.').pop().toUpperCase() : '等待本地文件';
+  const name = document.getElementById('background-file-name');
+  const type = document.getElementById('background-file-type');
+  const dot = document.getElementById('background-file-dot');
+  const summary = document.getElementById('background-summary');
+  if (name) name.textContent = fileName;
+  if (type) type.textContent = path ? `${extension} · 本地文件` : '等待本地文件';
+  if (dot) dot.classList.toggle('ready', !!path);
+  if (summary) {
+    const scale = document.getElementById('background-scale')?.value || 100;
+    const opacity = document.getElementById('panel-opacity')?.value || 58;
+    const fit = document.getElementById('media-fit')?.value === 'contain' ? '完整显示' : '铺满区域';
+    summary.textContent = `${fit} · 背景占用 ${scale}% · 对话主区域底色 ${opacity}%`;
+  }
+}
+function updateBackgroundImagePath() {
+  updateBackgroundPreview();
+  scheduleLiveBackgroundApply();
+}
+async function chooseBackgroundImage() {
+  const r = await api('choose_background_image');
+  if (!r || !r.ok) return toast(r ? r.error : '无法选择图片', 'err');
+  if (r.path) {
+    document.getElementById('background-image-path').value = r.path;
+    updateBackgroundPreview();
+    scheduleLiveBackgroundApply();
+  }
+}
+async function chooseCodexExecutable() {
+  const r = await api('choose_codex_executable');
+  if (!r || !r.ok) return toast(r ? r.error : '无法选择 Codex 程序', 'err');
+  if (r.path) document.getElementById('codex-launch-path').value = r.path;
+}
+async function loadBackgroundSettings() {
+  const data = await api('get_background_settings');
+  if (!data) return;
+  writeBackgroundForm(data);
+}
+async function applyBackground(restart, silent = false) {
+  if (!communityExperiments.local_appearance) {
+    if (!silent) toast('请先确认启用“本地外观实验”', 'notice');
+    return false;
+  }
+  const data = readBackgroundForm();
+  if (!data.image_path) {
+    if (!silent) toast('请先选择背景图片', 'err');
+    return false;
+  }
+  if (restart && !confirm('Codex 会立即关闭并以临时背景模式重启；当前会话内容不会删除。继续吗？')) return false;
+  const r = await api('apply_background', data, restart);
+  if (!r || !r.ok) {
+    if (!silent) toast(r ? r.error : '背景应用失败', 'err');
+    return false;
+  }
+  if (!silent) {
+    const mp4Hint = data.animated_mp4 && /\.mp4$/i.test(data.image_path)
+      ? 'MP4 已注入，正在解码；较大的视频首次显示可能需要几十秒。'
+      : (restart ? '已启动背景版 Codex' : '已应用到当前背景版 Codex');
+    toast(mp4Hint, 'ok');
+  }
+  return true;
+}
+async function launchCodexWithSavedBackground() {
+  if (!communityExperiments.local_appearance) {
+    return toast('请先确认启用“本地外观实验”', 'notice');
+  }
+  setLiveBackgroundStatus('正在启动 Codex并应用已保存背景…');
+  backgroundLivePreview = false;
+  const liveToggle = document.getElementById('live-background-preview');
+  if (liveToggle) liveToggle.checked = false;
+  const applied = await applyBackground(true);
+  if (applied) {
+    setLiveBackgroundStatus('已启动 Codex并应用已保存背景。需要调参时再开启实时预览。', 'ok');
+  }
+}
+async function startLiveBackgroundPreview() {
+  const applied = await applyBackground(true);
+  if (!applied) return;
+  backgroundLivePreview = true;
+  document.getElementById('live-background-preview').checked = true;
+  setLiveBackgroundStatus('实时预览已开启：拖动滑块会自动更新当前 Codex。', 'ok');
+}
+async function toggleLiveBackgroundPreview(enabled) {
+  if (!enabled) {
+    backgroundLivePreview = false;
+    clearTimeout(backgroundApplyTimer);
+    setLiveBackgroundStatus('实时预览已暂停；参数仍可保存和手动应用。');
+    return;
+  }
+  const applied = await applyBackground(false, true);
+  if (!applied) {
+    document.getElementById('live-background-preview').checked = false;
+    setLiveBackgroundStatus('无法开启实时预览：请先点击“启动并开启实时预览”。', 'error');
+    return;
+  }
+  backgroundLivePreview = true;
+  setLiveBackgroundStatus('实时预览已开启：拖动滑块会自动更新当前 Codex。', 'ok');
+}
+async function removeBackground() {
+  const r = await api('remove_background');
+  if (!r || !r.ok) return toast(r ? r.error : '恢复失败', 'err');
+  toast('已恢复当前窗口的官方外观', 'ok');
+}
 /* ---------- 导航 ---------- */
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -1266,18 +2343,47 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById(btn.dataset.tab).classList.add('active');
     document.getElementById('page-title').textContent = btn.dataset.title;
     document.getElementById('page-subtitle').textContent = btn.dataset.subtitle;
+    if (btn.dataset.tab === 'tab-appearance') loadBackgroundSettings();
+    if (btn.dataset.tab === 'tab-diagnostics') loadDiagnostics();
   });
 });
 
 /* ---------- 启动 ---------- */
-window.addEventListener('pywebviewready', async () => {
-  await initPresets();
-  await loadProviders();
-  await loadSessions();
-  refreshStatus();
-  setInterval(refreshStatus, 3000);
-  setInterval(loadSessions, 5000);  // 会话列表每 5 秒自动刷新（保留勾选）
-});
+/*
+ * 有些 Windows WebView2 环境会在页面脚本绑定事件前就触发 pywebviewready，
+ * 造成界面停在“加载中”，看起来像本地数据丢失。这里同时监听事件和轮询桥接对象：
+ * 只有本机桥接真正可用时才读取数据，且整个初始化只会执行一次。
+ */
+async function bootstrapApp() {
+  // 不能只判断 api 对象：PyWebView 会先创建空对象，再异步导出具体方法。
+  if (bootstrapStarted || typeof window.pywebview?.api?.get_providers !== 'function') return false;
+  bootstrapStarted = true;
+  if (bootstrapRetryTimer) clearInterval(bootstrapRetryTimer);
+  try {
+    await loadCommunityExperiments();
+    await loadBackgroundSettings();
+    await initPresets();
+    await loadProviders();
+    await loadSessions();
+    await loadDiagnostics();
+    refreshStatus();
+    setInterval(refreshStatus, 3000);
+    setInterval(loadSessions, 5000);  // 会话列表每 5 秒自动刷新（保留勾选）
+    return true;
+  } catch (error) {
+    // api() 已负责展示具体调用错误；允许稍后桥接恢复时重新初始化。
+    bootstrapStarted = false;
+    return false;
+  }
+}
+
+window.addEventListener('pywebviewready', bootstrapApp);
+// 兼容 pywebviewready 早于监听器触发的 WebView2 启动时序。
+bootstrapApp();
+bootstrapRetryTimer = setInterval(bootstrapApp, 250);
+setTimeout(() => {
+  if (bootstrapRetryTimer) clearInterval(bootstrapRetryTimer);
+}, 15000);
 </script>
 </body>
 </html>

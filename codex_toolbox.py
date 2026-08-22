@@ -1,12 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Codex 工具箱公开测试版：多供应商管理 + 本地翻译代理 + 官方会话归档。
+"""Codex 工具箱公开测试版：多供应商管理 + 本地翻译代理 + 会话归档辅助。
 供应商配置存于当前用户的 %LOCALAPPDATA%\\CodexToolbox，可增删改，一键切换。
 支持"本地翻译"供应商（proxy=true）：Codex -> 本地代理 -> 上游 Chat Completions（如 DeepSeek 官方）。
 运行：python codex_app.py（开发模式需安装 requirements.txt 中的依赖）。
 """
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import PRIMARY, SUCCESS, INFO, WARNING, DANGER, OUTLINE
-from tkinter import messagebox
 import sqlite3
 import os
 import re
@@ -23,6 +20,18 @@ import codex_proxy
 import secret_store
 
 
+# 公开版界面已迁移至 PyWebView（codex_app.py）。下方旧版 Tk 类仅保留历史源码，
+# 不能在导入核心逻辑时拉入 ttkbootstrap / tkinter，否则发布 EXE 会携带无用的 Tk 依赖。
+class _LegacyTtkPlaceholder:
+    class Toplevel:
+        pass
+
+
+ttk = _LegacyTtkPlaceholder()
+PRIMARY = SUCCESS = INFO = WARNING = DANGER = OUTLINE = "legacy-unused"
+messagebox = None
+
+
 def _app_dir():
     """开发版和打包版都使用系统数据目录，避免把密钥写入源码仓库。"""
     return secret_store.app_data_dir()
@@ -31,6 +40,7 @@ def _app_dir():
 CONFIG = os.path.expanduser(r"~\.codex\config.toml")
 STATE_DB = os.path.expanduser(r"~\.codex\state_5.sqlite")
 CATALOG_DB = os.path.expanduser(r"~\.codex\sqlite\codex-dev.db")
+SESSION_INDEX_FILE = os.path.expanduser(r"~\.codex\session_index.jsonl")
 BAK_DIR = os.path.join(_app_dir(), "archive_backups")
 PROVIDERS_FILE = os.path.join(_app_dir(), "providers.json")
 THREAD_ROUTES_FILE = os.path.join(_app_dir(), "thread_routes.json")
@@ -38,7 +48,53 @@ PROXY_PORT = 18732
 AUTH_HELPER_NAME = "Codex工具箱认证助手.exe"
 
 OFFICIAL_ID = "openai"
+OFFICIAL_NAME = "OpenAI 登录（当前 Codex 账户）"
 PROVIDER_NAMES = {}
+# Codex app-server 在部分机器上会先返回请求成功，再异步落盘会话设置。
+# 6 秒会造成“实际随后成功、工具箱却已报未确认”的误报；15 秒仍能避免无限等待。
+THREAD_ROUTE_VERIFY_TIMEOUT = 15.0
+THREAD_ROUTE_VERIFY_INTERVAL = 0.25
+
+
+class SessionRouteUnsupported(RuntimeError):
+    """当前 Codex 版本未确认保存已有会话的路由设置。"""
+
+
+def _wait_for_thread_route(tid, provider_id, model, effort):
+    """等待单个会话异步写入；保留单会话测试和旧调用的兼容入口。"""
+    return _wait_for_thread_routes([tid], provider_id, model, effort)
+
+
+def _wait_for_thread_routes(target_ids, provider_id, model, effort):
+    """一次轮询全部会话，避免多个会话依次等待完整超时。"""
+    target_ids = list(dict.fromkeys(target_ids))
+    if not target_ids:
+        return True
+    deadline = time.monotonic() + THREAD_ROUTE_VERIFY_TIMEOUT
+    placeholders = ",".join("?" for _ in target_ids)
+    while True:
+        verify = sqlite3.connect(STATE_DB, timeout=15)
+        try:
+            rows = verify.execute(
+                f"SELECT id, model_provider, model, reasoning_effort FROM threads WHERE id IN ({placeholders})",
+                target_ids,
+            ).fetchall()
+        finally:
+            verify.close()
+
+        row_map = {row[0]: row[1:] for row in rows}
+        if all(
+            tid in row_map
+            and row_map[tid][0] == provider_id
+            and row_map[tid][1] == model
+            and (not effort or row_map[tid][2] == effort)
+            for tid in target_ids
+        ):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(THREAD_ROUTE_VERIFY_INTERVAL)
+
 
 MODEL_PRESETS = [
     "deepseek-chat", "deepseek-reasoner",
@@ -48,6 +104,10 @@ MODEL_PRESETS = [
     "abab6.5s-chat", "abab6.5g-chat",
     "deepseek-ai/DeepSeek-V3", "deepseek-ai/DeepSeek-R1",
     "gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna",
+    "gemini-2.5-pro", "gemini-2.5-flash",
+    "grok-4", "grok-3",
+    "mistral-large-latest", "codestral-latest",
+    "llama-3.3-70b-versatile", "qwen/qwen3-32b",
 ]
 
 # 预设供应商模板。proxy=True 表示上游只支持 Chat Completions，需本地翻译代理（Responses→Chat 互转）；
@@ -81,6 +141,56 @@ PRESETS = [
     {"label": "OpenRouter", "name": "OpenRouter", "kind": "relay", "base_url": "https://openrouter.ai/api/v1",
      "model": "anthropic/claude-opus-5",
      "models": ["anthropic/claude-opus-5", "openai/gpt-5.6-sol", "deepseek/deepseek-v4-pro"],
+     "wire_api": "responses", "proxy": True},
+    # 以下预设只提供公开兼容接口的起始配置。模型可用性、区域、额度和工具调用能力
+    # 以各供应商账户实际返回的 /models 与其文档为准，保存前可在界面中测试连接。
+    {"label": "百度智能云千帆", "name": "千帆", "kind": "direct", "base_url": "https://qianfan.baidubce.com/v2",
+     "model": "deepseek-v3.2", "models": ["deepseek-v3.2", "deepseek-r1", "ernie-4.5-turbo-vl"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "腾讯混元", "name": "腾讯混元", "kind": "direct", "base_url": "https://api.hunyuan.cloud.tencent.com/v1",
+     "model": "hunyuan-turbos-latest", "models": ["hunyuan-turbos-latest", "hunyuan-a13b", "hunyuan-vision"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "阶跃星辰 StepFun", "name": "阶跃星辰", "kind": "direct", "base_url": "https://api.stepfun.com/v1",
+     "model": "step-3.5-flash", "models": ["step-3.5-flash", "step-2-16k", "step-1-8k"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "零一万物 Yi", "name": "零一万物", "kind": "direct", "base_url": "https://api.lingyiwanwu.com/v1",
+     "model": "yi-lightning", "models": ["yi-lightning", "yi-large", "yi-medium"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "百川智能", "name": "百川智能", "kind": "direct", "base_url": "https://api.baichuan-ai.com/v1",
+     "model": "Baichuan4", "models": ["Baichuan4", "Baichuan3-Turbo", "Baichuan2-Turbo"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "小米 MiMo", "name": "小米 MiMo", "kind": "direct", "base_url": "https://api.xiaomimimo.com/v1",
+     "model": "mimo-v2-flash", "models": ["mimo-v2-flash", "mimo-v2-pro", "mimo-v1"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "魔搭 ModelScope", "name": "魔搭 ModelScope", "kind": "relay", "base_url": "https://api-inference.modelscope.cn/v1",
+     "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct", "models": ["Qwen/Qwen3-Coder-480B-A35B-Instruct", "deepseek-ai/DeepSeek-V3.2", "ZhipuAI/GLM-4.7"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "Google Gemini（OpenAI 兼容）", "name": "Google Gemini", "kind": "direct", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+     "model": "gemini-2.5-flash", "models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "xAI Grok", "name": "xAI Grok", "kind": "direct", "base_url": "https://api.x.ai/v1",
+     "model": "grok-4", "models": ["grok-4", "grok-3", "grok-3-mini"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "Mistral AI", "name": "Mistral AI", "kind": "direct", "base_url": "https://api.mistral.ai/v1",
+     "model": "mistral-large-latest", "models": ["mistral-large-latest", "codestral-latest", "ministral-8b-latest"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "Groq", "name": "Groq", "kind": "direct", "base_url": "https://api.groq.com/openai/v1",
+     "model": "llama-3.3-70b-versatile", "models": ["llama-3.3-70b-versatile", "qwen/qwen3-32b", "openai/gpt-oss-120b"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "Together AI", "name": "Together AI", "kind": "relay", "base_url": "https://api.together.xyz/v1",
+     "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo", "models": ["meta-llama/Llama-3.3-70B-Instruct-Turbo", "deepseek-ai/DeepSeek-R1", "Qwen/Qwen2.5-72B-Instruct-Turbo"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "Fireworks AI", "name": "Fireworks AI", "kind": "relay", "base_url": "https://api.fireworks.ai/inference/v1",
+     "model": "accounts/fireworks/models/llama-v3p3-70b-instruct", "models": ["accounts/fireworks/models/llama-v3p3-70b-instruct", "accounts/fireworks/models/deepseek-r1", "accounts/fireworks/models/qwen3-235b-a22b"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "NVIDIA NIM", "name": "NVIDIA NIM", "kind": "relay", "base_url": "https://integrate.api.nvidia.com/v1",
+     "model": "meta/llama-3.3-70b-instruct", "models": ["meta/llama-3.3-70b-instruct", "deepseek-ai/deepseek-r1", "qwen/qwen3-235b-a22b"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "本地 Ollama（OpenAI 兼容）", "name": "本地 Ollama", "kind": "local", "base_url": "http://127.0.0.1:11434/v1",
+     "model": "qwen3:latest", "models": ["qwen3:latest", "deepseek-r1:latest", "llama3.3:latest"],
+     "wire_api": "responses", "proxy": True},
+    {"label": "本地 LM Studio（OpenAI 兼容）", "name": "本地 LM Studio", "kind": "local", "base_url": "http://127.0.0.1:1234/v1",
+     "model": "local-model", "models": ["local-model"],
      "wire_api": "responses", "proxy": True},
 ]
 
@@ -150,6 +260,17 @@ def normalize_provider(p):
     p.setdefault("kind", "official" if p.get("id") == OFFICIAL_ID else "relay")
     p.setdefault("wire_api", "responses")
     p.setdefault("reasoning_effort", "")
+    if p.get("id") == OFFICIAL_ID:
+        # 登录状态由用户当前 Codex 账户决定，不能假定具体套餐或组织类型。
+        p["name"] = OFFICIAL_NAME
+        p["kind"] = "official"
+        p["base_url"] = ""
+        p["api_key"] = ""
+        p.pop("proxy", None)
+        p.pop("upstream_base", None)
+    elif p.get("kind") == "official":
+        # 只有内置 openai 条目能使用 Codex 的现有登录；其他条目必须显式配置 API。
+        p["kind"] = "relay"
     if _is_dashscope_provider(p):
         p["kind"] = "direct"
         p["base_url"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -223,7 +344,7 @@ def load_providers():
         provs.extend(_providers_from_config())
     except Exception:
         pass
-    official = {"id": OFFICIAL_ID, "name": "官方 ChatGPT Plus", "kind": "official", "model": read_model()}
+    official = {"id": OFFICIAL_ID, "name": OFFICIAL_NAME, "kind": "official", "model": read_model()}
     if not any(p["id"] == OFFICIAL_ID for p in provs):
         provs.insert(0, official)
     save_providers(provs)
@@ -261,7 +382,7 @@ def save_thread_routes(routes):
 
 
 def set_thread_route_mode(tids, mode, provider=None):
-    """记录工具箱管理语义。follow 才会在以后切换全局默认时同步。"""
+    """记录工具箱管理语义；follow 表示曾手动同步到当时的全局默认。"""
     if mode not in ("follow", "fixed"):
         raise ValueError("会话模式必须是 follow 或 fixed")
     routes = load_thread_routes()
@@ -270,31 +391,39 @@ def set_thread_route_mode(tids, mode, provider=None):
     save_thread_routes(routes)
 
 
-def following_thread_ids():
-    return [tid for tid, item in load_thread_routes().items()
-            if isinstance(item, dict) and item.get("mode") == "follow"]
+def following_thread_ids(active_only=False):
+    """返回历史上标记为 follow 的会话，供兼容旧配置和诊断使用。
+
+    自 0.1.0-beta 起，全局切换不会据此修改已有会话。
+    """
+    following = [tid for tid, item in load_thread_routes().items()
+                 if isinstance(item, dict) and item.get("mode") == "follow"]
+    if not active_only or not following:
+        return following
+
+    placeholders = ",".join("?" for _ in following)
+    try:
+        conn = sqlite3.connect(STATE_DB, timeout=15)
+        try:
+            rows = conn.execute(
+                f"SELECT id FROM threads WHERE archived = 0 AND id IN ({placeholders})",
+                following,
+            ).fetchall()
+        finally:
+            conn.close()
+        active_ids = {row[0] for row in rows}
+        return [tid for tid in following if tid in active_ids]
+    except sqlite3.Error:
+        return following
 
 
 def migrate_active_dashscope():
-    """若当前正使用旧版千问本地代理配置，自动备份并改为 DashScope 官方直连。"""
-    pid = read_provider()
-    p = next((x for x in load_providers() if x.get("id") == pid), None)
-    if not p or not _is_dashscope_provider(p):
-        return False
-    try:
-        with open(CONFIG, encoding="utf-8") as f:
-            content = f.read()
-        sections = parse_sections(content)
-        current_url = sections.get(f"model_providers.{pid}", {}).get("base_url", "")
-        if "dashscope.aliyuncs.com" in current_url.lower():
-            return False
-        os.makedirs(BAK_DIR, exist_ok=True)
-        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        shutil.copy2(CONFIG, os.path.join(BAK_DIR, f"config.toml.bak_{stamp}"))
-        apply_provider(pid)
-        return True
-    except Exception:
-        return False
+    """兼容旧调用的空操作。
+
+    公开版不再因检测到历史千问配置而自动修改用户的 Codex 配置；用户需要
+    在界面中核对供应商后，明确点击切换才会写入配置。
+    """
+    return False
 
 
 def _toml_string(value):
@@ -500,8 +629,52 @@ def _backup_sqlite(source, destination):
         src.close()
 
 
+def _backup_catalog_if_present(destination):
+    """catalog 是侧栏缓存，缺失时不阻断会话路由、归档或恢复。"""
+    if os.path.isfile(CATALOG_DB):
+        _backup_sqlite(CATALOG_DB, destination)
+
+
+def _archived_state_map(thread_ids):
+    """读取指定会话是否已归档，用于失败回滚时只恢复本次可能影响的会话。"""
+    ids = list(dict.fromkeys(thread_ids))
+    if not ids:
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    conn = sqlite3.connect(STATE_DB, timeout=15)
+    try:
+        return {
+            row[0]: bool(row[1])
+            for row in conn.execute(
+                f"SELECT id, archived FROM threads WHERE id IN ({placeholders})", ids
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+
 def _find_codex_executable():
-    """定位桌面版自带的 codex.exe；不把 npm 的 .cmd 包装器当作桌面后端。"""
+    """定位可运行 Codex app-server 的入口。
+
+    Microsoft Store 包内的 ``resources/codex.exe`` 在部分 Windows 版本中
+    不允许被外部程序直接执行。若检测到用户安装的官方 ``@openai/codex``
+    CLI，优先使用其 ``codex.cmd``，它和桌面端使用同一 ``~/.codex`` 数据目录。
+    """
+    app_data = os.environ.get("APPDATA", "")
+    cli_candidates = []
+    if app_data:
+        cli_candidates.append(os.path.join(app_data, "npm", "codex.cmd"))
+    cli_from_path = shutil.which("codex.cmd")
+    if cli_from_path:
+        cli_candidates.append(cli_from_path)
+    for cli_path in cli_candidates:
+        cli_path = os.path.abspath(os.path.expandvars(cli_path))
+        cli_package = os.path.join(
+            os.path.dirname(cli_path), "node_modules", "@openai", "codex", "bin", "codex.js"
+        )
+        if os.path.isfile(cli_path) and os.path.isfile(cli_package):
+            return cli_path
+
     candidates = []
     configured = os.environ.get("CODEX_EXECUTABLE")
     if configured:
@@ -521,6 +694,33 @@ def _find_codex_executable():
             os.path.join(local_app_data, "Programs", "Codex", "resources", "codex.exe"),
         ])
 
+    # 部分 PyInstaller 打包环境下，WindowsApps 的通配枚举会异常。
+    # Store 的已注册包位置是稳定的系统信息，用它补充候选路径，避免写死用户目录。
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                [
+                    "powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+                    "Get-AppxPackage -Name OpenAI.Codex | "
+                    "Sort-Object Version -Descending | Select-Object -ExpandProperty InstallLocation",
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            if result.returncode == 0:
+                for install_location in result.stdout.splitlines():
+                    install_location = install_location.strip()
+                    if install_location:
+                        candidates.append(os.path.join(
+                            install_location, "app", "resources", "codex.exe"
+                        ))
+        except (OSError, subprocess.SubprocessError):
+            pass
+
     existing = []
     seen = set()
     for path in candidates:
@@ -535,7 +735,7 @@ def _find_codex_executable():
 
 
 class _CodexAppServer:
-    """最小 JSON-RPC 客户端：只通过官方 app-server 执行会话归档/恢复。"""
+    """最小 JSON-RPC 客户端：只通过 Codex app-server 执行会话归档/恢复。"""
 
     def __init__(self, executable, timeout=20):
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -543,8 +743,12 @@ class _CodexAppServer:
         self.next_id = 1
         self.lines = queue.Queue()
         self.stderr_lines = []
+        if executable.lower().endswith((".cmd", ".bat")):
+            command = ["cmd.exe", "/d", "/s", "/c", executable, "app-server", "--stdio"]
+        else:
+            command = [executable, "app-server", "--stdio"]
         self.process = subprocess.Popen(
-            [executable, "app-server", "--stdio"],
+            command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -558,7 +762,12 @@ class _CodexAppServer:
         threading.Thread(target=self._read_stderr, daemon=True).start()
         self.request("initialize", {
             "clientInfo": {"name": "codex-toolbox", "version": "0.1.0-beta"},
-            "capabilities": {"optOutNotificationMethods": ["thread/started"]},
+            # thread/resume.excludeTurns 是 app-server 标注的实验字段，
+            # 必须在初始化时显式协商，否则当前 app-server 会拒绝该请求。
+            "capabilities": {
+                "experimentalApi": True,
+                "optOutNotificationMethods": ["thread/started"],
+            },
         })
         self._send({"method": "initialized"})
 
@@ -596,10 +805,10 @@ class _CodexAppServer:
             if "error" in message:
                 error = message["error"]
                 detail = error.get("message") if isinstance(error, dict) else str(error)
-                raise RuntimeError(f"Codex 官方接口失败：{detail}")
+                raise RuntimeError(f"Codex app-server 请求失败：{detail}")
             return message.get("result")
         detail = "\n".join(self.stderr_lines[-5:])
-        raise RuntimeError(f"等待 Codex 官方接口响应超时。{detail}")
+        raise RuntimeError(f"等待 Codex app-server 响应超时。{detail}")
 
     def close(self):
         try:
@@ -616,7 +825,7 @@ class _CodexAppServer:
 
 
 def _thread_ids_with_descendants(conn, target_ids):
-    """官方归档会连同子会话一起处理；预检和备份也覆盖同一范围。"""
+    """Codex 归档通常会连同子会话一起处理；预检和备份也覆盖同一范围。"""
     result = []
     pending = list(dict.fromkeys(target_ids))
     has_edges = conn.execute(
@@ -635,8 +844,184 @@ def _thread_ids_with_descendants(conn, target_ids):
     return result
 
 
+def _sync_session_index(removed_ids=(), restored_rows=()):
+    """同步 Codex 启动时读取的最近会话索引，避免归档会话在重启后短暂出现。"""
+    removed_ids = set(removed_ids)
+    restored = {row[0]: row for row in restored_rows}
+    if not removed_ids and not restored:
+        return
+
+    lines = []
+    if os.path.isfile(SESSION_INDEX_FILE):
+        with open(SESSION_INDEX_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    # 不属于会话索引格式的历史行原样保留。
+                    lines.append(line.rstrip("\r\n"))
+                    continue
+                if not isinstance(item, dict) or item.get("id") not in (removed_ids | set(restored)):
+                    lines.append(json.dumps(item, ensure_ascii=False, separators=(",", ":")))
+
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    for tid, row in restored.items():
+        title = row[1] or "未命名会话"
+        lines.append(json.dumps({"id": tid, "thread_name": title, "updated_at": now},
+                                ensure_ascii=False, separators=(",", ":")))
+
+    directory = os.path.dirname(SESSION_INDEX_FILE)
+    os.makedirs(directory, exist_ok=True)
+    temporary = f"{SESSION_INDEX_FILE}.tmp-{os.getpid()}-{time.time_ns()}"
+    try:
+        with open(temporary, "w", encoding="utf-8", newline="\n") as f:
+            if lines:
+                f.write("\n".join(lines) + "\n")
+        os.replace(temporary, SESSION_INDEX_FILE)
+    finally:
+        if os.path.exists(temporary):
+            os.remove(temporary)
+
+
+def _remove_archived_catalog_rows(thread_ids):
+    """移除已归档会话残留的侧栏 catalog 记录。
+
+    当前 Windows 版 Codex 的归档有时不会删除这些记录，重启后会使
+    已归档任务短暂回到“最近”。只清理 state 数据库已确认 archived=1 的 ID。
+    """
+    thread_ids = list(dict.fromkeys(thread_ids))
+    if not thread_ids:
+        return 0
+    if not os.path.isfile(CATALOG_DB):
+        return 0
+    placeholders = ",".join("?" for _ in thread_ids)
+    state = sqlite3.connect(STATE_DB, timeout=15)
+    try:
+        archived_ids = [row[0] for row in state.execute(
+            f"SELECT id FROM threads WHERE archived = 1 AND id IN ({placeholders})",
+            thread_ids,
+        ).fetchall()]
+    finally:
+        state.close()
+    if not archived_ids:
+        return 0
+
+    placeholders = ",".join("?" for _ in archived_ids)
+    catalog = sqlite3.connect(CATALOG_DB, timeout=15)
+    try:
+        with catalog:
+            cursor = catalog.execute(
+                f"DELETE FROM local_thread_catalog WHERE thread_id IN ({placeholders})",
+                archived_ids,
+            )
+        return cursor.rowcount
+    finally:
+        catalog.close()
+
+
+def _archived_ids_from_state(candidate_ids=None):
+    """只从 state 中确认 archived=1 的会话 ID，绝不猜测其他记录。"""
+    conn = sqlite3.connect(STATE_DB, timeout=15)
+    try:
+        if candidate_ids:
+            candidate_ids = list(dict.fromkeys(candidate_ids))
+            placeholders = ",".join("?" for _ in candidate_ids)
+            rows = conn.execute(
+                f"SELECT id FROM threads WHERE archived = 1 AND id IN ({placeholders})",
+                candidate_ids,
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT id FROM threads WHERE archived = 1").fetchall()
+    finally:
+        conn.close()
+    return [row[0] for row in rows]
+
+
+def _archived_residue(archived_ids):
+    """读取修复后的残留；只用于验证，不对未知数据做任何处理。"""
+    ids = set(archived_ids)
+    catalog_ids = set()
+    index_ids = set()
+    if ids and os.path.isfile(CATALOG_DB):
+        catalog = sqlite3.connect(CATALOG_DB, timeout=15)
+        try:
+            placeholders = ",".join("?" for _ in ids)
+            catalog_ids = {row[0] for row in catalog.execute(
+                f"SELECT thread_id FROM local_thread_catalog WHERE thread_id IN ({placeholders})",
+                list(ids),
+            ).fetchall()}
+        finally:
+            catalog.close()
+    if ids and os.path.isfile(SESSION_INDEX_FILE):
+        with open(SESSION_INDEX_FILE, "r", encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(item, dict) and item.get("id") in ids:
+                    index_ids.add(item["id"])
+    return catalog_ids, index_ids
+
+
+def _backup_sidebar_repair_inputs(destination):
+    """备份兼容修复会读取/写入的三份本地数据。"""
+    os.makedirs(destination, exist_ok=False)
+    _backup_sqlite(STATE_DB, os.path.join(destination, "state_5.sqlite"))
+    if os.path.isfile(CATALOG_DB):
+        _backup_sqlite(CATALOG_DB, os.path.join(destination, "codex-dev.db"))
+    if os.path.isfile(SESSION_INDEX_FILE):
+        shutil.copy2(SESSION_INDEX_FILE, os.path.join(destination, "session_index.jsonl"))
+
+
+def repair_archived_session_index(candidate_ids=None, backup_dir=None):
+    """实验兼容修复：只移除已归档会话的侧栏残留，并完成验证。
+
+    该逻辑用于部分 Codex 版本已归档但 ``local_thread_catalog`` / ``session_index``
+    仍残留的情况。它不会删除未归档会话，也不会批量猜测未知记录。
+    """
+    archived_ids = _archived_ids_from_state(candidate_ids)
+
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    repair_backup = backup_dir or os.path.join(BAK_DIR, f"archived_sidebar_repair_{stamp}")
+    if backup_dir is None:
+        _backup_sidebar_repair_inputs(repair_backup)
+    try:
+        _sync_session_index(removed_ids=archived_ids)
+        removed_catalog_rows = _remove_archived_catalog_rows(archived_ids)
+        catalog_left, index_left = _archived_residue(archived_ids)
+        if catalog_left or index_left:
+            details = []
+            if catalog_left:
+                details.append(f"catalog 仍残留 {len(catalog_left)} 条")
+            if index_left:
+                details.append(f"session_index 仍残留 {len(index_left)} 条")
+            raise RuntimeError(
+                "修复后验证失败，已停止；未处理未知数据。"
+                f"备份位置：{repair_backup}；" + "，".join(details)
+            )
+    except Exception:
+        # 归档后自动修复失败时，只还原本函数碰过的侧栏文件；
+        # 归档状态本身随后仍由 archive_threads 的 app-server 回滚处理。
+        if backup_dir is not None:
+            catalog_backup = os.path.join(repair_backup, "codex-dev.db")
+            index_backup = os.path.join(repair_backup, "session_index.jsonl")
+            try:
+                if os.path.isfile(catalog_backup):
+                    shutil.copy2(catalog_backup, CATALOG_DB)
+                if os.path.isfile(index_backup):
+                    shutil.copy2(index_backup, SESSION_INDEX_FILE)
+                elif os.path.isfile(SESSION_INDEX_FILE):
+                    os.remove(SESSION_INDEX_FILE)
+            except OSError:
+                # 原始错误会携带备份位置，避免二次异常掩盖它。
+                pass
+        raise
+    return stamp, len(archived_ids), removed_catalog_rows, repair_backup
+
+
 def archive_threads(target_ids):
-    """按 Codex 官方语义归档：预检/备份后调用 app-server 的 thread/archive。"""
+    """按当前 Codex 行为归档：预检/备份后调用 app-server 的 thread/archive。"""
     target_ids = list(dict.fromkeys(tid for tid in target_ids if tid))
     if not target_ids:
         raise ValueError("没有可归档的会话。")
@@ -647,7 +1032,7 @@ def archive_threads(target_ids):
         affected_ids = _thread_ids_with_descendants(conn, target_ids)
         placeholders = ",".join("?" for _ in affected_ids)
         rows = conn.execute(
-            f"SELECT id, rollout_path, archived FROM threads WHERE id IN ({placeholders})",
+            f"SELECT id, rollout_path, archived, title FROM threads WHERE id IN ({placeholders})",
             affected_ids,
         ).fetchall()
     finally:
@@ -676,25 +1061,31 @@ def archive_threads(target_ids):
     rollout_backup = os.path.join(operation_backup, "rollouts")
     os.makedirs(rollout_backup, exist_ok=False)
     _backup_sqlite(STATE_DB, os.path.join(operation_backup, "state_5.sqlite"))
-    _backup_sqlite(CATALOG_DB, os.path.join(operation_backup, "codex-dev.db"))
+    _backup_catalog_if_present(os.path.join(operation_backup, "codex-dev.db"))
+    if os.path.isfile(SESSION_INDEX_FILE):
+        shutil.copy2(SESSION_INDEX_FILE, os.path.join(operation_backup, "session_index.jsonl"))
     for source in files_to_backup:
         shutil.copy2(source, os.path.join(rollout_backup, os.path.basename(source)))
 
     # 当前 Codex Windows 版对部分 \\?\ 扩展路径归档会误报文件不存在；
-    # 仅规范化路径表示，真正的移动、状态更新和 catalog 维护仍交给官方 app-server。
-    conn = sqlite3.connect(STATE_DB, timeout=15)
-    try:
-        with conn:
-            for tid, original_path in originals.items():
-                conn.execute(
-                    "UPDATE threads SET rollout_path=? WHERE id=?",
-                    (_normal_windows_path(original_path), tid),
-                )
-    finally:
-        conn.close()
+    # 仅规范化路径表示，真正的移动、状态更新和 catalog 维护仍交给 Codex app-server。
+    # 仅对 ``\\?\`` 扩展路径做临时兼容处理。普通路径无需写 SQLite；
+    # app-server 若未把临时路径替换为归档后的真实路径，后续校验会失败并走回滚。
+    normalized_for_archive = {
+        tid: _normal_windows_path(original_path)
+        for tid, original_path in originals.items()
+        if _normal_windows_path(original_path) != original_path
+    }
+    if normalized_for_archive:
+        conn = sqlite3.connect(STATE_DB, timeout=15)
+        try:
+            with conn:
+                for tid, normal_path in normalized_for_archive.items():
+                    conn.execute("UPDATE threads SET rollout_path=? WHERE id=?", (normal_path, tid))
+        finally:
+            conn.close()
 
     client = None
-    archived_by_this_run = []
     try:
         client = _CodexAppServer(executable)
         for tid in target_ids:
@@ -706,32 +1097,53 @@ def archive_threads(target_ids):
             if archived and archived[0]:
                 continue
             client.request("thread/archive", {"threadId": tid})
-            archived_by_this_run.append(tid)
 
         verify = sqlite3.connect(STATE_DB)
         try:
-            for tid in target_ids:
+            # 子会话由 app-server 负责级联处理；必须验证整个预检范围，不能只验证父会话。
+            for tid in originals:
                 row = verify.execute(
                     "SELECT archived, rollout_path FROM threads WHERE id=?", (tid,)
                 ).fetchone()
                 if not row or not row[0] or not os.path.isfile(_normal_windows_path(row[1])):
-                    raise RuntimeError(f"官方接口返回后校验失败：{tid}")
+                    raise RuntimeError(f"Codex app-server 返回后校验失败：{tid}")
+                if tid in normalized_for_archive and row[1] == normalized_for_archive[tid]:
+                    raise RuntimeError(f"Codex app-server 未更新归档后的会话路径：{tid}")
         finally:
             verify.close()
-    except Exception:
+        # 已归档后的侧栏残留只按 state 已确认 archived=1 的 ID 做受限修复。
+        # 本次归档的完整备份已在 operation_backup 中，失败会走 app-server 回滚流程。
+        repair_archived_session_index(affected_ids, backup_dir=operation_backup)
+    except Exception as operation_error:
+        rollback_errors = []
         if client:
-            for tid in reversed(archived_by_this_run):
+            # app-server 可能已级联归档子会话；按真实 state 回滚全部受影响的活跃会话。
+            for tid, archived in reversed(list(_archived_state_map(originals).items())):
+                if not archived:
+                    continue
                 try:
                     client.request("thread/unarchive", {"threadId": tid})
-                except Exception:
-                    pass
-        restore = sqlite3.connect(STATE_DB, timeout=15)
-        try:
-            with restore:
-                for tid, original_path in originals.items():
-                    restore.execute("UPDATE threads SET rollout_path=? WHERE id=?", (original_path, tid))
-        finally:
-            restore.close()
+                except Exception as rollback_error:
+                    rollback_errors.append(f"{tid}: {rollback_error}")
+        # 只恢复本函数为扩展路径做的临时表示；仍处于归档状态的会话不能伪造原路径。
+        current_states = _archived_state_map(normalized_for_archive)
+        restore_ids = [tid for tid, archived in current_states.items() if not archived]
+        if restore_ids:
+            restore = sqlite3.connect(STATE_DB, timeout=15)
+            try:
+                with restore:
+                    for tid in restore_ids:
+                        restore.execute(
+                            "UPDATE threads SET rollout_path=? WHERE id=?",
+                            (originals[tid], tid),
+                        )
+            finally:
+                restore.close()
+        if rollback_errors:
+            raise RuntimeError(
+                f"{operation_error}\n部分归档回滚未确认：{'；'.join(rollback_errors)}\n"
+                f"请保留并检查备份：{operation_backup}"
+            ) from operation_error
         raise
     finally:
         if client:
@@ -741,18 +1153,19 @@ def archive_threads(target_ids):
 
 
 def unarchive_threads(target_ids):
-    """通过 Codex 官方 app-server 恢复已归档会话，操作前保留一致性备份。"""
+    """通过 Codex app-server 恢复已归档会话，操作前保留一致性备份。"""
     target_ids = list(dict.fromkeys(tid for tid in target_ids if tid))
     if not target_ids:
         raise ValueError("没有可恢复的会话。")
 
     executable = _find_codex_executable()
-    placeholders = ",".join("?" for _ in target_ids)
     conn = sqlite3.connect(STATE_DB, timeout=15)
     try:
+        affected_ids = _thread_ids_with_descendants(conn, target_ids)
+        placeholders = ",".join("?" for _ in affected_ids)
         rows = conn.execute(
-            f"SELECT id, rollout_path, archived FROM threads WHERE id IN ({placeholders})",
-            target_ids,
+            f"SELECT id, rollout_path, archived, title FROM threads WHERE id IN ({placeholders})",
+            affected_ids,
         ).fetchall()
     finally:
         conn.close()
@@ -761,14 +1174,16 @@ def unarchive_threads(target_ids):
     if missing:
         raise RuntimeError(f"数据库中找不到会话：{', '.join(missing)}")
 
+    originals = {}
     files_to_backup = []
-    for tid in target_ids:
-        _, path, archived = row_map[tid]
+    for tid in affected_ids:
+        _, path, archived, _ = row_map[tid]
         if not archived:
             continue
         normal_path = _normal_windows_path(path)
         if not normal_path or not os.path.isfile(normal_path):
             raise RuntimeError(f"已归档会话文件不存在，已取消恢复：{tid}")
+        originals[tid] = True
         files_to_backup.append(normal_path)
 
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -776,37 +1191,48 @@ def unarchive_threads(target_ids):
     rollout_backup = os.path.join(operation_backup, "rollouts")
     os.makedirs(rollout_backup, exist_ok=False)
     _backup_sqlite(STATE_DB, os.path.join(operation_backup, "state_5.sqlite"))
-    _backup_sqlite(CATALOG_DB, os.path.join(operation_backup, "codex-dev.db"))
+    _backup_catalog_if_present(os.path.join(operation_backup, "codex-dev.db"))
+    if os.path.isfile(SESSION_INDEX_FILE):
+        shutil.copy2(SESSION_INDEX_FILE, os.path.join(operation_backup, "session_index.jsonl"))
     for source in files_to_backup:
         shutil.copy2(source, os.path.join(rollout_backup, os.path.basename(source)))
 
     client = None
-    restored_by_this_run = []
     try:
         client = _CodexAppServer(executable)
         for tid in target_ids:
             if not row_map[tid][2]:
                 continue
             client.request("thread/unarchive", {"threadId": tid})
-            restored_by_this_run.append(tid)
 
         verify = sqlite3.connect(STATE_DB)
         try:
-            for tid in target_ids:
+            for tid in originals:
                 row = verify.execute(
                     "SELECT archived, rollout_path FROM threads WHERE id=?", (tid,)
                 ).fetchone()
                 if not row or row[0] or not os.path.isfile(_normal_windows_path(row[1])):
-                    raise RuntimeError(f"官方接口返回后恢复校验失败：{tid}")
+                    raise RuntimeError(f"Codex app-server 返回后恢复校验失败：{tid}")
         finally:
             verify.close()
-    except Exception:
+        restored_rows = [(tid, row_map[tid][3]) for tid in originals if not _archived_state_map([tid]).get(tid)]
+        _sync_session_index(restored_rows=restored_rows)
+    except Exception as operation_error:
+        rollback_errors = []
         if client:
-            for tid in reversed(restored_by_this_run):
+            # app-server 可能已级联恢复子会话；按当前 state 回滚全部本次涉及的已恢复会话。
+            for tid, archived in reversed(list(_archived_state_map(originals).items())):
+                if archived:
+                    continue
                 try:
                     client.request("thread/archive", {"threadId": tid})
-                except Exception:
-                    pass
+                except Exception as rollback_error:
+                    rollback_errors.append(f"{tid}: {rollback_error}")
+        if rollback_errors:
+            raise RuntimeError(
+                f"{operation_error}\n部分恢复回滚未确认：{'；'.join(rollback_errors)}\n"
+                f"请保留并检查备份：{operation_backup}"
+            ) from operation_error
         raise
     finally:
         if client:
@@ -814,9 +1240,23 @@ def unarchive_threads(target_ids):
     return stamp
 
 
-def set_threads_provider_official(target_ids, provider_id):
+def resolve_thread_route_settings(provider, model_override=None, effort_override=None):
+    """合并供应商默认值与仅用于本次会话路由的覆盖值。"""
+    model = (model_override or "").strip() if isinstance(model_override, str) else ""
+    effort = (effort_override or "").strip().lower() if isinstance(effort_override, str) else ""
+    model = model or (provider.get("model") or "").strip()
+    effort = effort or (provider.get("reasoning_effort") or "").strip().lower()
+    if not model:
+        raise ValueError(f"供应商 {provider.get('name', provider.get('id', ''))} 未设置模型。")
+    allowed_efforts = {"minimal", "low", "medium", "high", "xhigh", "max", "ultra"}
+    if effort and effort not in allowed_efforts:
+        raise ValueError("思考强度仅支持 minimal、low、medium、high、xhigh、max 或 ultra。")
+    return model, effort
+
+
+def set_threads_provider_official(target_ids, provider_id, model_override=None, effort_override=None):
     """
-    通过 Codex 官方 thread/resume 为已有会话覆盖通道和模型。
+    通过 Codex app-server 的 thread/resume 为已有会话尝试设置通道和模型。
 
     本函数只读取 SQLite 用于预检和结果校验，不直接写入 SQLite/JSONL。
     """
@@ -826,9 +1266,7 @@ def set_threads_provider_official(target_ids, provider_id):
     provider = next((item for item in load_providers() if item.get("id") == provider_id), None)
     if not provider:
         raise ValueError(f"供应商 {provider_id} 不存在")
-    model = provider.get("model") or ""
-    if not model:
-        raise ValueError(f"供应商 {provider.get('name', provider_id)} 未设置模型。")
+    model, effort = resolve_thread_route_settings(provider, model_override, effort_override)
 
     placeholders = ",".join("?" for _ in target_ids)
     conn = sqlite3.connect(STATE_DB, timeout=15)
@@ -863,12 +1301,11 @@ def set_threads_provider_official(target_ids, provider_id):
     rollout_backup = os.path.join(operation_backup, "rollouts")
     os.makedirs(rollout_backup, exist_ok=False)
     _backup_sqlite(STATE_DB, os.path.join(operation_backup, "state_5.sqlite"))
-    _backup_sqlite(CATALOG_DB, os.path.join(operation_backup, "codex-dev.db"))
+    _backup_catalog_if_present(os.path.join(operation_backup, "codex-dev.db"))
     for source in rollout_files:
         shutil.copy2(source, os.path.join(rollout_backup, os.path.basename(source)))
 
     executable = _find_codex_executable()
-    effort = provider.get("reasoning_effort") or ""
     client = None
     switched = []
     try:
@@ -880,35 +1317,29 @@ def set_threads_provider_official(target_ids, provider_id):
                 "model": model,
                 "excludeTurns": True,
             }) or {}
+            # resume 成功后已经可能写入会话设置。即使随后的结果校验或思考强度设置失败，
+            # 也必须把该会话纳入回滚范围。
+            switched.append(tid)
             if isinstance(result, dict):
                 returned_provider = result.get("modelProvider")
                 returned_model = result.get("model")
                 if returned_provider and returned_provider != provider_id:
-                    raise RuntimeError(f"官方接口返回的通道不一致：{tid}")
+                    raise RuntimeError(f"Codex app-server 返回的通道不一致：{tid}")
                 if returned_model and returned_model != model:
-                    raise RuntimeError(f"官方接口返回的模型不一致：{tid}")
+                    raise RuntimeError(f"Codex app-server 返回的模型不一致：{tid}")
             if effort:
                 client.request("thread/settings/update", {
                     "threadId": tid,
                     "model": model,
                     "effort": effort,
                 })
-            switched.append(tid)
-
-        verify = sqlite3.connect(STATE_DB, timeout=15)
-        try:
-            for tid in target_ids:
-                row = verify.execute(
-                    "SELECT model_provider, model, reasoning_effort FROM threads WHERE id=?", (tid,)
-                ).fetchone()
-                if (not row or row[0] != provider_id or row[1] != model
-                        or (effort and row[2] != effort)):
-                    raise RuntimeError(
-                        f"官方接口未持久化会话通道，已取消：{tid}"
-                    )
-        finally:
-            verify.close()
-    except Exception:
+        if not _wait_for_thread_routes(target_ids, provider_id, model, effort):
+            raise SessionRouteUnsupported(
+                f"等待 Codex 保存已有会话的通道设置超过 {int(THREAD_ROUTE_VERIFY_TIMEOUT)} 秒，未确认成功。"
+                "本次没有标记为已切换；全局通道和会话内容未受影响。"
+            )
+    except Exception as operation_error:
+        rollback_errors = []
         if client:
             for tid in reversed(switched):
                 original_provider, original_model, original_effort = originals[tid]
@@ -924,8 +1355,13 @@ def set_threads_provider_official(target_ids, provider_id):
                         "model": original_model,
                         "effort": original_effort,
                     })
-                except Exception:
-                    pass
+                except Exception as rollback_error:
+                    rollback_errors.append(f"{tid}: {rollback_error}")
+        if rollback_errors:
+            raise RuntimeError(
+                f"{operation_error}\n部分会话路由回滚未确认：{'；'.join(rollback_errors)}\n"
+                f"请保留并检查备份：{operation_backup}"
+            ) from operation_error
         raise
     finally:
         if client:
@@ -933,9 +1369,9 @@ def set_threads_provider_official(target_ids, provider_id):
     return stamp
 
 
-def set_thread_provider(tid, provider):
-    """向后兼容的单会话入口，内部使用官方 app-server。"""
-    return set_threads_provider_official([tid], provider)
+def set_thread_provider(tid, provider, model_override=None, effort_override=None):
+    """向后兼容的单会话入口，内部使用 Codex app-server。"""
+    return set_threads_provider_official([tid], provider, model_override, effort_override)
 
 
 class ProviderDialog(ttk.Toplevel):
@@ -1172,7 +1608,7 @@ class ToolboxApp:
         self.var_arch_msg = ttk.StringVar(value="")
         ttk.Label(row_a, textvariable=self.var_arch_msg, bootstyle=SUCCESS).pack(side="left", padx=(12, 0))
 
-        note = ("· 供应商配置存于 codex_tools\\providers.json，可自由添加/编辑/删除中转站。\n"
+        note = ("· 供应商配置存于 codex_tools\\providers.json，可自由添加/编辑/删除 API 接入配置。\n"
                 "· 「本地翻译」供应商（如 DeepSeek 官方）：Codex 请求经本地代理 (127.0.0.1:18732) 自动做 Responses↔Chat 协议转换。\n"
                 "· 单会话切换会同步数据库 + rollout 元数据；切换过通道的会话 UI 归档会失效（用本工具归档即可）。\n"
                 "· 所有操作前自动备份到 codex_tools\\archive_backups\\。")
@@ -1375,9 +1811,7 @@ class ToolboxApp:
 
 
 def main():
-    root = ttk.Window(themename="flatly", title="Codex 工具箱", size=(1040, 820), minsize=(960, 740))
-    ToolboxApp(root)
-    root.mainloop()
+    raise SystemExit("旧版 Tk 界面已停止维护，请运行 codex_app.py。")
 
 
 if __name__ == "__main__":

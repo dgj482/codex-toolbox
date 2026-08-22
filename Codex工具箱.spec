@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_submodules
 
+# 公开版采用 PyWebView；旧版 Tk 界面不在启动链和发布包中。
 hiddenimports = collect_submodules("webview") + collect_submodules("pystray")
 
 a = Analysis(
@@ -10,6 +11,7 @@ a = Analysis(
     datas=[
         ("ui.html", "."),
         ("assets/codex_toolbox.ico", "."),
+        ("experiments/codex_background_injector.ps1", "experiments"),
     ],
     hiddenimports=hiddenimports,
     hookspath=[],

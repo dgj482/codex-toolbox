@@ -39,14 +39,64 @@ class ProxyConfig:
     provider_id = ""
 
 
+class UnsupportedCapabilityError(ValueError):
+    """请求包含本地协议翻译无法无损转换的能力。"""
+
+
 def _new_id(prefix):
     return f"{prefix}_{uuid.uuid4().hex}"
+
+
+def _response_input_items(body):
+    """把 Responses 的单条或列表输入统一为列表，拒绝未知输入结构。"""
+    raw_input = body.get("input", [])
+    if isinstance(raw_input, (str, dict)):
+        return [raw_input]
+    if isinstance(raw_input, list):
+        return raw_input
+    raise UnsupportedCapabilityError("本地协议翻译不支持当前输入结构；请改用原生 Responses API。")
+
+
+def _validate_supported_request(body):
+    """不静默丢弃工具或媒体能力，避免生成看似成功但语义错误的请求。"""
+    unsupported = []
+    for tool in body.get("tools", []) or []:
+        if not isinstance(tool, dict):
+            unsupported.append("未知工具")
+            continue
+        tool_type = tool.get("type", "未知工具")
+        if tool_type != "function":
+            unsupported.append(str(tool_type))
+
+    for item in _response_input_items(body):
+        if not isinstance(item, dict) or item.get("type") != "message":
+            continue
+        content = item.get("content", [])
+        if isinstance(content, str):
+            continue
+        if not isinstance(content, list):
+            unsupported.append("未知消息内容")
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                unsupported.append("未知消息内容")
+                continue
+            block_type = block.get("type", "未知内容")
+            if block_type not in ("input_text", "output_text"):
+                unsupported.append(str(block_type))
+
+    if unsupported:
+        names = "、".join(dict.fromkeys(unsupported))
+        raise UnsupportedCapabilityError(
+            f"本地协议翻译不支持：{names}。请改用原生 Responses API 或移除该能力。"
+        )
 
 
 def responses_to_chat(body):
     """把 Codex 的 /v1/responses 请求体转为 Chat Completions 请求体"""
     messages = []
-    for item in body.get("input", []) or []:
+    _validate_supported_request(body)
+    for item in _response_input_items(body):
         if isinstance(item, str):
             messages.append({"role": "user", "content": item})
             continue
@@ -109,8 +159,6 @@ def responses_to_chat(body):
                         "parameters": fn.get("parameters", {"type": "object", "properties": {}}),
                     },
                 })
-            elif t.get("type") in ("custom", "web_search", "file_search"):
-                pass  # 不支持的上游工具类型，跳过
         if converted:
             chat["tools"] = converted
     if body.get("tool_choice"):
@@ -327,6 +375,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.wfile.flush()
         self.close_connection = True
 
+    def _send_error(self, status, message, error_type):
+        payload = json.dumps({"error": {"message": message, "type": error_type}}).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_POST(self):
         path = self.path.split("?")[0]
         try:
@@ -354,12 +410,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 self._send_events(events)
                 return
             _log(f"POST {path} -> 404 (no matching route)")
+        except UnsupportedCapabilityError as e:
+            _log(f"POST {path} UNSUPPORTED: {str(e)[:300]}")
+            self._send_error(422, str(e), "unsupported_capability")
+            return
         except Exception as e:
             _log(f"POST {path} EXCEPTION {type(e).__name__}: {str(e)[:300]}")
-            self.send_response(500)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": {"message": str(e), "type": "proxy_error"}}).encode("utf-8"))
+            self._send_error(500, str(e), "proxy_error")
             return
         self.send_response(404)
         self.end_headers()
