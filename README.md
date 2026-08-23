@@ -4,7 +4,17 @@
 
 Windows 本地辅助工具。它把“全局默认通道”和“已有会话的单独通道”分开管理：新会话按全局默认创建；已存在的会话可以按需固定到某个已配置的供应商、模型和思考强度，也可以手动同步回当前全局默认。
 
+> **Codex Toolbox for Windows**: per-session provider, model, and reasoning selection for existing Codex tasks, plus provider health checks and a local customizable background experiment.
+
+[下载 Windows 测试版](https://github.com/dgj482/codex-toolbox/releases/latest) · [查看使用手册](docs/使用手册.md) · [报告问题](https://github.com/dgj482/codex-toolbox/issues/new?template=bug_report.yml)
+
 > `0.1.0-beta` Windows x64 测试版。社区项目，非 OpenAI 官方产品，也不代表 OpenAI 认可。会话路由与本地外观均为默认关闭的非官方实验，Codex 更新后可能失效。
+
+| 适合谁 | 能解决什么 |
+| --- | --- |
+| 同时维护多个 Codex 任务的人 | 不同任务保留不同模型通道和推理强度，不干扰彼此 |
+| 配置了多个 API 或本地模型服务的人 | 一次检测全部已配置通道，再决定使用哪一个 |
+| 想把 Codex 窗口做得更个性化的人 | 本地图片、GIF、MP4 背景可按显示范围和通透效果调节 |
 
 ## 它解决什么问题
 
