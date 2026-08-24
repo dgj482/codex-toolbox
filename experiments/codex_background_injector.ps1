@@ -65,7 +65,7 @@ param(
     [int]$GradientOpacity = 28,
     [ValidateRange(0, 360)]
     [int]$GradientAngle = 135,
-    [ValidateSet("compact", "normal", "hidden")]
+    [ValidateSet("compact", "normal", "topbar", "hidden")]
     [string]$TitlebarMode = "compact",
     [bool]$CompactDiff = $true,
     [bool]$AllowAnimatedGif = $false,
@@ -600,6 +600,27 @@ if ($Remove) {
 "@
         }
         "normal" { "" }
+        "topbar" {
+@"
+/* 顶部栏占位模式：让会话标题栏回到页面布局流，不覆盖正文内容。 */
+#root main > header.pointer-events-none.fixed.z-30 {
+  position: static !important;
+  inset: auto !important;
+  width: 100% !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  transform: none !important;
+  z-index: 2 !important;
+  display: flex !important;
+  background: rgba(250, 252, 255, $threadHeaderAlpha) !important;
+  background-image: none !important;
+  backdrop-filter: blur(${Blur}px) !important;
+  border: 0 !important;
+  opacity: 1;
+  pointer-events: auto !important;
+}
+"@
+        }
         default {
 @"
 /* 会话固定标题栏：保持可操作，但不再以整块半透明面板遮挡正文和背景。 */

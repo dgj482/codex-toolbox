@@ -761,7 +761,7 @@ class _CodexAppServer:
         threading.Thread(target=self._read_stdout, daemon=True).start()
         threading.Thread(target=self._read_stderr, daemon=True).start()
         self.request("initialize", {
-            "clientInfo": {"name": "codex-toolbox", "version": "0.1.0-beta"},
+            "clientInfo": {"name": "codex-toolbox", "version": "0.1.1-beta"},
             # thread/resume.excludeTurns 是 app-server 标注的实验字段，
             # 必须在初始化时显式协商，否则当前 app-server 会拒绝该请求。
             "capabilities": {
@@ -1254,7 +1254,13 @@ def resolve_thread_route_settings(provider, model_override=None, effort_override
     return model, effort
 
 
-def set_threads_provider_official(target_ids, provider_id, model_override=None, effort_override=None):
+def set_threads_provider_official(
+    target_ids,
+    provider_id,
+    model_override=None,
+    effort_override=None,
+    progress_callback=None,
+):
     """
     通过 Codex app-server 的 thread/resume 为已有会话尝试设置通道和模型。
 
@@ -1309,8 +1315,12 @@ def set_threads_provider_official(target_ids, provider_id, model_override=None, 
     client = None
     switched = []
     try:
+        if progress_callback:
+            progress_callback("正在启动 Codex app-server，并准备校验模型落盘")
         client = _CodexAppServer(executable)
-        for tid in target_ids:
+        for index, tid in enumerate(target_ids, start=1):
+            if progress_callback:
+                progress_callback(f"正在处理第 {index}/{len(target_ids)} 个会话")
             result = client.request("thread/resume", {
                 "threadId": tid,
                 "modelProvider": provider_id,
@@ -1327,17 +1337,21 @@ def set_threads_provider_official(target_ids, provider_id, model_override=None, 
                     raise RuntimeError(f"Codex app-server 返回的通道不一致：{tid}")
                 if returned_model and returned_model != model:
                     raise RuntimeError(f"Codex app-server 返回的模型不一致：{tid}")
+            # thread/resume 的 model 可能只作用于本次恢复；必须再通过
+            # thread/settings/update 持久化已有会话的下一轮模型。省略空 effort，
+            # 让 Codex 保留或使用目标通道的默认思考强度。
+            settings_params = {"threadId": tid, "model": model}
             if effort:
-                client.request("thread/settings/update", {
-                    "threadId": tid,
-                    "model": model,
-                    "effort": effort,
-                })
-        if not _wait_for_thread_routes(target_ids, provider_id, model, effort):
-            raise SessionRouteUnsupported(
-                f"等待 Codex 保存已有会话的通道设置超过 {int(THREAD_ROUTE_VERIFY_TIMEOUT)} 秒，未确认成功。"
-                "本次没有标记为已切换；全局通道和会话内容未受影响。"
-            )
+                settings_params["effort"] = effort
+            client.request("thread/settings/update", settings_params)
+            # 逐个会话确认，避免批量操作中前面的半成功状态暴露给用户。
+            if progress_callback:
+                progress_callback(f"正在确认第 {index}/{len(target_ids)} 个会话的通道和模型")
+            if not _wait_for_thread_routes([tid], provider_id, model, effort):
+                raise SessionRouteUnsupported(
+                    f"会话 {tid} 的通道或模型未在 {int(THREAD_ROUTE_VERIFY_TIMEOUT)} 秒内落盘确认。"
+                    "工具箱将尝试回滚本次已处理会话。"
+                )
     except Exception as operation_error:
         rollback_errors = []
         if client:
@@ -1350,13 +1364,20 @@ def set_threads_provider_official(target_ids, provider_id, model_override=None, 
                         "model": original_model,
                         "excludeTurns": True,
                     })
-                    client.request("thread/settings/update", {
-                        "threadId": tid,
-                        "model": original_model,
-                        "effort": original_effort,
-                    })
+                    rollback_settings = {"threadId": tid, "model": original_model}
+                    if original_effort:
+                        rollback_settings["effort"] = original_effort
+                    client.request("thread/settings/update", rollback_settings)
                 except Exception as rollback_error:
                     rollback_errors.append(f"{tid}: {rollback_error}")
+            # app-server 可能返回成功但异步落盘；回滚请求后必须再次读取 state 验证，
+            # 不能仅凭请求没有报错就向用户宣称已恢复。
+            for tid in switched:
+                original_provider, original_model, original_effort = originals[tid]
+                if not _wait_for_thread_routes(
+                    [tid], original_provider, original_model, original_effort,
+                ):
+                    rollback_errors.append(f"{tid}: 回滚后的通道或模型未确认")
         if rollback_errors:
             raise RuntimeError(
                 f"{operation_error}\n部分会话路由回滚未确认：{'；'.join(rollback_errors)}\n"

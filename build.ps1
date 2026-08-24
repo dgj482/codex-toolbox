@@ -25,7 +25,7 @@ try {
     & $Python -m PyInstaller --noconfirm --clean "Codex工具箱认证助手.spec"
     if ($LASTEXITCODE -ne 0) { throw "认证助手打包失败。" }
 
-    $PackageDir = Join-Path $RepoRoot "dist\Codex工具箱-0.1.0-beta-windows-x64"
+    $PackageDir = Join-Path $RepoRoot "dist\Codex工具箱-0.1.1-beta-windows-x64"
     if (Test-Path -LiteralPath $PackageDir) {
         Remove-Item -LiteralPath $PackageDir -Recurse -Force
     }

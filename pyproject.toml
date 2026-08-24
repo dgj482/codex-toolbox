@@ -1,6 +1,6 @@
 [project]
 name = "codex-toolbox"
-version = "0.1.0b1"
+version = "0.1.1b1"
 description = "Windows Codex desktop toolbox for provider switching and experimental session archive/restore helpers"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Codex 工具箱 0.1.0-beta（PyWebView 界面）
+"""Codex 工具箱 0.1.1-beta（PyWebView 界面）
 前端：ui.html（HTML/CSS/JS），后端：本文件 Api 类 + codex_toolbox 逻辑
 运行：python codex_app.py （需 pywebview + WebView2）
 """
@@ -11,6 +11,7 @@ import glob
 import subprocess
 import re
 import shutil
+import time
 import webview
 import codex_toolbox as core
 
@@ -21,6 +22,16 @@ def _resource_path(*parts):
     """返回开发版或打包版内置资源的实际路径。"""
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, *parts)
+
+
+def _toolbox_icon_path():
+    """返回主程序、窗口和托盘统一使用的图标路径。"""
+    candidates = (
+        _resource_path("codex_toolbox.ico"),
+        _resource_path("assets", "codex_toolbox.ico"),
+        os.path.join(core._app_dir(), "codex_toolbox.ico"),
+    )
+    return next((path for path in candidates if os.path.isfile(path)), "")
 
 
 def _load_ui():
@@ -220,7 +231,7 @@ class Api:
         result["animated_gif"] = bool(data.get("animated_gif", defaults["animated_gif"]))
         result["animated_mp4"] = bool(data.get("animated_mp4", defaults["animated_mp4"]))
         result["titlebar_mode"] = data.get("titlebar_mode") if data.get("titlebar_mode") in {
-            "compact", "normal", "hidden"
+            "compact", "normal", "topbar", "hidden"
         } else defaults["titlebar_mode"]
         result["media_fit"] = data.get("media_fit") if data.get("media_fit") in {
             "cover", "contain"
@@ -474,7 +485,7 @@ class Api:
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
-                "User-Agent": "CodexToolbox/0.1.0-beta",
+                "User-Agent": "CodexToolbox/0.1.1-beta",
             },
         )
         try:
@@ -682,20 +693,52 @@ class Api:
                 "issues": issues, "advice": advice}
 
     def test_provider_connection(self, pid):
-        """用户主动触发的轻量认证测试：调用 /models，不产生对话用量。"""
+        """用户主动触发的连接测试，不发送对话内容。"""
         import urllib.error
         import urllib.request
         p = next((x for x in core.load_providers() if x.get("id") == pid), None)
         if not p:
             return {"ok": False, "error": "供应商不存在"}
         if pid == core.OFFICIAL_ID:
-            return {"ok": True, "message": "该通道使用当前 Codex 登录状态，请直接在 Codex 中验证可用性。"}
+            # 官方通道没有 API Key 或可安全调用的 /models 地址。旧逻辑只看
+            # auth.json 是否存在，容易把“已登录但官方流式链路超时”误报为成功。
+            # app-server 的 model/list 只读取当前登录账户可用模型，不发送用户
+            # 对话，也不会产生模型调用用量；用它验证登录、配置和官方网络链路。
+            client = None
+            started = time.monotonic()
+            try:
+                executable = core._find_codex_executable()
+                client = core._CodexAppServer(executable, timeout=12)
+                result = client.request("model/list", {}) or {}
+                models = result.get("data") if isinstance(result, dict) else None
+                count = len(models) if isinstance(models, list) else 0
+                elapsed = time.monotonic() - started
+                return {
+                    "ok": True,
+                    "message": f"官方登录、app-server 和模型列表预检正常（{count} 个模型，耗时 {elapsed:.1f} 秒）。首次对话仍需官方流式连接可用。",
+                    "models_count": count,
+                    "elapsed_seconds": round(elapsed, 1),
+                }
+            except Exception as error:
+                detail = str(error).strip().replace("\r", " ").replace("\n", " ")
+                detail = " ".join(detail.split())[:260]
+                return {
+                    "ok": False,
+                    "error": (
+                        "官方登录状态存在，但官方连接预检失败：" + detail +
+                        "。请检查 chatgpt.com 的 HTTPS/WebSocket 是否经过可用代理，"
+                        "并完全重启 Codex 后再试。"
+                    ),
+                }
+            finally:
+                if client:
+                    client.close()
         base = (p.get("upstream_base") if p.get("proxy") else p.get("base_url")) or ""
         if not base.startswith(("http://", "https://")):
             return {"ok": False, "error": "Base URL 无效"}
         req = urllib.request.Request(
             base.rstrip("/") + "/models",
-            headers={"Authorization": f"Bearer {p.get('api_key', '')}", "User-Agent": "CodexToolbox/0.1.0-beta"},
+            headers={"Authorization": f"Bearer {p.get('api_key', '')}", "User-Agent": "CodexToolbox/0.1.1-beta"},
         )
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
@@ -880,7 +923,9 @@ class Api:
             "targets": [{"id": tid, "title": sessions[tid]["title"]} for tid in target_ids],
         }
 
-    def switch_sessions(self, tids, pid, model_override=None, effort_override=None):
+    def switch_sessions(
+        self, tids, pid, model_override=None, effort_override=None, progress_callback=None,
+    ):
         if not self._load_community_experiments()["session_routing"]:
             return {"ok": False, "error": "请先在“会话路由实验”中确认并启用此非官方功能"}
         if core.codex_running():
@@ -894,7 +939,9 @@ class Api:
             )
             proxy_url = self._ensure_proxy(provider) if provider.get("proxy") else None
             core.ensure_provider_config(pid, proxy_url)
-            stamp = core.set_threads_provider_official(tids, pid, model, effort)
+            stamp = core.set_threads_provider_official(
+                tids, pid, model, effort, progress_callback=progress_callback,
+            )
             core.set_thread_route_mode(tids, "fixed", pid)
         except core.SessionRouteUnsupported as e:
             return {
@@ -945,7 +992,15 @@ class Api:
             daemon=True,
         )
         worker.start()
-        return {"ok": True, "operation_id": operation_id, "message": "已开始后台处理"}
+        # 单个会话包含 app-server 启动、写入和异步校验；批量会话按顺序处理。
+        # 返回估算上限让 UI 不会在固定 60 秒时误报超时。
+        return {
+            "ok": True,
+            "operation_id": operation_id,
+            "count": len(target_ids),
+            "estimated_timeout_ms": max(120000, len(target_ids) * 60000 + 60000),
+            "message": "已开始后台处理，请保持 Codex 关闭直到结果显示",
+        }
 
     def _run_route_operation(self, operation_id, tids, pid, mode, model_override=None, effort_override=None):
         with self.route_operations_lock:
@@ -955,10 +1010,14 @@ class Api:
             operation["state"] = "running"
             operation["message"] = "正在请求 Codex 保存通道，并确认落盘状态"
         try:
-            result = (
-                self.switch_sessions(tids, pid, model_override, effort_override)
-                if mode == "fixed" else self.follow_sessions(tids)
-            )
+            # 在后台线程真正开始前再次检查，防止用户在确认后重新打开 Codex。
+            if core.codex_running():
+                result = {"ok": False, "error": "Codex 已重新运行，请先完全退出 Codex 后再操作。"}
+            elif mode == "fixed":
+                # 保持旧调用签名兼容；核心函数仍支持维护者传入进度回调。
+                result = self.switch_sessions(tids, pid, model_override, effort_override)
+            else:
+                result = self.follow_sessions(tids)
             with self.route_operations_lock:
                 operation = self.route_operations.get(operation_id)
                 if not operation:
@@ -1005,7 +1064,7 @@ class Api:
                 "error": result.get("error") if operation.get("state") == "error" else None,
             }
 
-    def follow_sessions(self, tids):
+    def follow_sessions(self, tids, progress_callback=None):
         if not self._load_community_experiments()["session_routing"]:
             return {"ok": False, "error": "请先在“会话路由实验”中确认并启用此非官方功能"}
         if core.codex_running():
@@ -1017,7 +1076,9 @@ class Api:
         try:
             proxy_url = self._ensure_proxy(provider) if provider.get("proxy") else None
             core.ensure_provider_config(pid, proxy_url)
-            stamp = core.set_threads_provider_official(tids, pid)
+            stamp = core.set_threads_provider_official(
+                tids, pid, progress_callback=progress_callback,
+            )
             core.set_thread_route_mode(tids, "follow", pid)
         except core.SessionRouteUnsupported as e:
             return {
@@ -1164,9 +1225,8 @@ def main():
         try:
             import pystray
             from PIL import Image
-            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "codex_toolbox.ico")
-            if not os.path.exists(icon_path):
-                icon_path = os.path.join(os.environ.get("LOCALAPPDATA", ""), "CodexToolbox", "codex_toolbox.ico")
+            # 与 PyInstaller EXE 和桌面快捷方式共用同一份主图标，避免托盘显示旧图标。
+            icon_path = _toolbox_icon_path()
             img = Image.open(icon_path) if os.path.exists(icon_path) else Image.new("RGBA", (64, 64), (79, 140, 255, 255))
             menu = pystray.Menu(
                 pystray.MenuItem("显示工具箱", tray_show, default=True),

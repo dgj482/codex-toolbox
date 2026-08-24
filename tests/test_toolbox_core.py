@@ -18,6 +18,13 @@ from codex_app import Api
 
 
 class ToolboxCoreTests(unittest.TestCase):
+    def test_runtime_tray_icon_uses_canonical_asset(self):
+        from codex_app import _toolbox_icon_path
+
+        icon_path = _toolbox_icon_path()
+        self.assertTrue(icon_path)
+        self.assertEqual(Path(icon_path).name, "codex_toolbox.ico")
+
     def test_get_models_prefers_api_created_order_and_hides_non_chat_models(self):
         class Response:
             def read(self):
@@ -608,6 +615,55 @@ class ToolboxCoreTests(unittest.TestCase):
         self.assertEqual([item["ok"] for item in result["results"]], [True, False])
         self.assertEqual(check.call_args_list, [mock.call("openai"), mock.call("qwen")])
 
+    def test_official_connection_check_uses_app_server_model_list(self):
+        api = object.__new__(Api)
+
+        class FakeAppServer:
+            def __init__(self, executable, timeout):
+                self.executable = executable
+                self.timeout = timeout
+                self.requests = []
+
+            def request(self, method, params):
+                self.requests.append((method, params))
+                return {"data": [{"id": "gpt-test"}, {"id": "gpt-test-mini"}]}
+
+            def close(self):
+                pass
+
+        provider = {"id": "openai", "name": "官方"}
+        server_factory = mock.Mock(side_effect=FakeAppServer)
+        with mock.patch.object(core, "load_providers", return_value=[provider]), \
+             mock.patch.object(core, "_find_codex_executable", return_value="codex.cmd"), \
+             mock.patch.object(core, "_CodexAppServer", server_factory):
+            result = api.test_provider_connection("openai")
+
+        self.assertTrue(result["ok"])
+        self.assertIn("2 个模型", result["message"])
+        server_factory.assert_called_once_with("codex.cmd", timeout=12)
+
+    def test_official_connection_check_surfaces_timeout(self):
+        api = object.__new__(Api)
+
+        class FailingAppServer:
+            def __init__(self, executable, timeout):
+                pass
+
+            def request(self, method, params):
+                raise RuntimeError("等待 Codex app-server 响应超时。")
+
+            def close(self):
+                pass
+
+        with mock.patch.object(core, "load_providers", return_value=[{"id": "openai"}]), \
+             mock.patch.object(core, "_find_codex_executable", return_value="codex.cmd"), \
+             mock.patch.object(core, "_CodexAppServer", FailingAppServer):
+            result = api.test_provider_connection("openai")
+
+        self.assertFalse(result["ok"])
+        self.assertIn("官方连接预检失败", result["error"])
+        self.assertIn("HTTPS/WebSocket", result["error"])
+
     def test_session_route_unsupported_is_a_notice_not_a_failure(self):
         api = object.__new__(Api)
         provider = {"id": "qwen", "name": "千问", "model": "qwen-test", "proxy": False}
@@ -801,7 +857,7 @@ class ToolboxCoreTests(unittest.TestCase):
                         with conn:
                             conn.execute(
                                 "UPDATE threads SET model=?, reasoning_effort=? WHERE id=?",
-                                (params["model"], params["effort"], params["threadId"]),
+                                (params["model"], params.get("effort"), params["threadId"]),
                             )
                     else:
                         conn.close()
@@ -865,7 +921,7 @@ class ToolboxCoreTests(unittest.TestCase):
                             elif method == "thread/settings/update":
                                 conn.execute(
                                     "UPDATE threads SET model=?, reasoning_effort=? WHERE id=?",
-                                    (params["model"], params["effort"], params["threadId"]),
+                                    (params["model"], params.get("effort"), params["threadId"]),
                                 )
                             else:
                                 raise AssertionError(method)
@@ -931,7 +987,7 @@ class ToolboxCoreTests(unittest.TestCase):
                         with conn:
                             conn.execute(
                                 "UPDATE threads SET model=?, reasoning_effort=? WHERE id=?",
-                                (params["model"], params["effort"], params["threadId"]),
+                                (params["model"], params.get("effort"), params["threadId"]),
                             )
                     else:
                         conn.close()
@@ -975,7 +1031,7 @@ class ToolboxCoreTests(unittest.TestCase):
                     pass
 
                 def request(self, method, params):
-                    if method == "thread/settings/update" and params["effort"] == "high":
+                    if method == "thread/settings/update" and params.get("effort") == "high":
                         raise RuntimeError("模拟思考强度写入失败")
                     conn = sqlite3.connect(core.STATE_DB)
                     try:
@@ -989,7 +1045,7 @@ class ToolboxCoreTests(unittest.TestCase):
                             with conn:
                                 conn.execute(
                                     "UPDATE threads SET model=?, reasoning_effort=? WHERE id=?",
-                                    (params["model"], params["effort"], params["threadId"]),
+                                    (params["model"], params.get("effort"), params["threadId"]),
                                 )
                         else:
                             raise AssertionError(method)

@@ -894,9 +894,10 @@ input[type=range] { width:100%; accent-color:#5868df; margin-top:8px; }
               </select>
             </div>
             <button class="btn blue" id="btn-route-fixed" onclick="doFixRoute()">固定到目标通道</button>
+            <button class="btn amber" id="btn-route-repair" onclick="repairModelResidue()">修复模型残留</button>
             <button class="btn ghost" id="btn-route-follow" onclick="doFollowRoute()">同步到当前默认通道</button>
             <div class="route-operation-status" id="route-operation-status">选择会话和目标通道后，操作进度会显示在这里。</div>
-            <div class="route-tip">确认前会展示会话、目标通道、模型和思考强度。第三方是否真正执行该强度由上游能力决定；若接口异常，工具箱会尝试恢复原设置，不保证跨版本兼容。</div>
+            <div class="route-tip">“修复模型残留”只处理当前标红的会话，并通过同一套 app-server、备份和落盘校验流程尝试恢复；不能保证跨版本兼容。第三方是否真正执行思考强度由上游能力决定。</div>
           </div>
         </div>
       </div>
@@ -1005,6 +1006,7 @@ input[type=range] { width:100%; accent-color:#5868df; margin-top:8px; }
               <div class="range-field"><div class="range-label"><span>左侧导航透明度</span><span class="range-value" id="sidebar-value">42%</span></div><input type="range" id="sidebar-opacity" min="0" max="100" value="42" oninput="updateBackgroundValues()"><p class="range-help">只影响左侧导航和会话列表。数值高时列表更清楚，数值低时背景更明显。</p></div>
               <div class="range-field"><div class="range-label"><span>窗口顶部栏透明度</span><span class="range-value" id="toolbar-value">28%</span></div><input type="range" id="toolbar-opacity" min="0" max="100" value="28" oninput="updateBackgroundValues()"><p class="range-help">只影响窗口最上方菜单栏和工具栏；0% 最通透，数值越高越容易看清顶部文字。</p></div>
               <div class="range-field"><div class="range-label"><span>会话标题栏透明度</span><span class="range-value" id="thread-header-value">28%</span></div><input type="range" id="thread-header-opacity" min="0" max="100" value="28" oninput="updateBackgroundValues()"><p class="range-help">只影响对话区上方显示会话名称的标题栏，例如“工具箱 (2)”。不影响窗口最上方菜单栏或中间正文。</p></div>
+              <div class="compact-field"><label>会话标题栏位置</label><select id="titlebar-mode" onchange="scheduleLiveBackgroundApply()"><option value="topbar">顶部栏占位：不遮挡正文（推荐）</option><option value="normal">悬浮在正文上方：保留 Codex 默认位置</option><option value="compact">紧凑悬浮：尽量减少遮挡</option><option value="hidden">隐藏会话标题栏</option></select><small>这是截图中“工具箱 (2)”所在的标题栏，不是左侧会话置顶。顶部栏占位会让它参与页面布局，因此正文不会被压住。</small></div>
               <div class="range-field"><div class="range-label"><span>浮层与结果卡透明度</span><span class="range-value" id="card-value">24%</span></div><input type="range" id="card-opacity" min="0" max="100" value="24" oninput="updateBackgroundValues()"><p class="range-help">影响菜单、弹出面板和文件修改结果卡。数值高时这些局部区域更容易阅读。</p></div>
               <div class="range-field"><div class="range-label"><span>磨砂模糊</span><span class="range-value" id="blur-value">6 px</span></div><input type="range" id="background-blur" min="0" max="20" value="6" oninput="updateBackgroundValues()"><p class="range-help">模糊的是文字后方的背景，不会模糊文字。0 px 最锐利；数值越高越有玻璃质感。</p></div>
             </section>
@@ -1348,7 +1350,10 @@ async function diagnoseSelected() {
 }
 async function testSelected() {
   if (!selectedProviderId) return toast('请先选择供应商', 'err');
-  toast('正在测试连接和 API Key…');
+  const selected = providers.find(p => p.id === selectedProviderId);
+  toast(selected && selected.kind === 'official'
+    ? '正在检测官方登录、app-server 和模型连接…'
+    : '正在测试连接和 API Key…');
   const r = await api('test_provider_connection', selectedProviderId);
   if (!r || !r.ok) return toast(r ? r.error : '连接失败', 'err');
   toast(r.message, 'ok');
@@ -1620,6 +1625,10 @@ function renderRouteList() {
   document.getElementById('route-count').textContent = sessions.length;
   document.getElementById('route-selected').textContent = `已选 ${checkedRoutes.size} 个会话`;
   document.getElementById('btn-route-fixed').disabled = routeActionBusy || !checkedRoutes.size || !communityExperiments.session_routing;
+  const repairButton = document.getElementById('btn-route-repair');
+  if (repairButton) {
+    repairButton.disabled = routeActionBusy || !sessions.some(s => s.model_mismatch) || !communityExperiments.session_routing;
+  }
   document.getElementById('btn-route-follow').disabled = routeActionBusy || !checkedRoutes.size || !communityExperiments.session_routing;
 }
 function toggleRoute(id) {
@@ -1635,14 +1644,16 @@ function setRouteActionBusy(busy, label = '') {
   renderRouteList();
 }
 
-async function doFixRoute() {
+async function doFixRoute(repairMode = false) {
   if (!checkedRoutes.size) return toast('请先勾选会话', 'err');
   if (!communityExperiments.session_routing) return toast('请先确认启用“会话路由实验”', 'notice');
   if (routeActionBusy) return;
   const pid = document.getElementById('route-provider').value;
   const provider = providers.find(p => p.id === pid);
   if (!provider) return toast('请选择目标通道', 'err');
-  const modelOverride = document.getElementById('route-model').value.trim();
+  // 修复模式把目标通道默认模型显式传给 app-server，避免旧模型被继续保留。
+  const enteredModel = document.getElementById('route-model').value.trim();
+  const modelOverride = repairMode ? (enteredModel || provider.model || '') : enteredModel;
   const effortOverride = document.getElementById('route-effort').value;
   setRouteActionBusy(true, '正在准备确认…');
   setRouteOperationStatus('正在预检会话和目标通道…', 'busy');
@@ -1657,21 +1668,38 @@ async function doFixRoute() {
       return;
     }
     const names = preview.targets.map(item => `· ${item.title || item.id}`).join('\n');
-    if (!confirm(`非官方会话路由实验\n\n目标通道：${preview.provider}\n目标模型：${preview.model}\n思考强度：${effortLabel(preview.reasoning_effort)}\n\n待修改会话：\n${names}\n\n操作前会备份；失败时尝试恢复。第三方条款、地区、额度和计费由你自行负责。继续吗？`)) {
+    const actionName = repairMode ? '修复标红的模型残留' : '固定会话通道';
+    if (!confirm(`非官方会话路由实验\n\n操作：${actionName}\n目标通道：${preview.provider}\n目标模型：${preview.model}\n思考强度：${effortLabel(preview.reasoning_effort)}\n\n待修改会话：\n${names}\n\n操作前会备份；模型未确认落盘时会尝试回滚。第三方条款、地区、额度和计费由你自行负责。继续吗？`)) {
       setRouteOperationStatus('已取消本次设置。', '');
       return;
     }
     setRouteActionBusy(true, '后台处理中…');
-    setRouteOperationStatus('已提交，正在后台请求 Codex 保存通道…', 'busy');
+    setRouteOperationStatus('已提交，正在后台请求 Codex 保存通道；请保持 Codex 关闭…', 'busy');
     const submitted = await api('start_route_operation', [...checkedRoutes], pid, 'fixed', modelOverride, effortOverride);
     if (!submitted || !submitted.ok) {
       setRouteOperationStatus(submitted ? submitted.error : '无法启动后台会话通道切换', 'error');
       return;
     }
-    await pollRouteOperation(submitted.operation_id, `已成功固定 ${checkedRoutes.size} 个会话到「${provider.name}」。`);
+    await pollRouteOperation(
+      submitted.operation_id,
+      repairMode
+        ? `已尝试修复 ${checkedRoutes.size} 个模型残留会话。`
+        : `已成功固定 ${checkedRoutes.size} 个会话到「${provider.name}」。`,
+      submitted.estimated_timeout_ms,
+    );
   } finally {
     setRouteActionBusy(false);
   }
+}
+function repairModelResidue() {
+  if (routeActionBusy) return;
+  if (!communityExperiments.session_routing) return toast('请先确认启用“会话路由实验”', 'notice');
+  const mismatched = sessions.filter(s => s.model_mismatch);
+  if (!mismatched.length) return toast('当前没有标记为模型残留的会话', 'notice');
+  checkedRoutes.clear();
+  mismatched.forEach(s => checkedRoutes.add(s.id));
+  renderRouteList();
+  doFixRoute(true);
 }
 async function doFollowRoute() {
   if (!checkedRoutes.size) return toast('请先勾选会话', 'err');
@@ -1697,13 +1725,17 @@ async function doFollowRoute() {
       return;
     }
     setRouteActionBusy(true, '后台处理中…');
-    setRouteOperationStatus('已提交，正在后台请求 Codex 保存通道…', 'busy');
+    setRouteOperationStatus('已提交，正在后台请求 Codex 保存通道；请保持 Codex 关闭…', 'busy');
     const submitted = await api('start_route_operation', [...checkedRoutes], current.id, 'follow');
     if (!submitted || !submitted.ok) {
       setRouteOperationStatus(submitted ? submitted.error : '无法启动后台会话通道同步', 'error');
       return;
     }
-    await pollRouteOperation(submitted.operation_id, `已成功同步 ${checkedRoutes.size} 个会话到当前默认通道。`);
+    await pollRouteOperation(
+      submitted.operation_id,
+      `已成功同步 ${checkedRoutes.size} 个会话到当前默认通道。`,
+      submitted.estimated_timeout_ms,
+    );
   } finally {
     setRouteActionBusy(false);
   }
@@ -1714,8 +1746,8 @@ function setRouteOperationStatus(text, tone = '') {
   status.textContent = text;
   status.className = `route-operation-status ${tone}`.trim();
 }
-async function pollRouteOperation(operationId, successText) {
-  const deadline = Date.now() + 60000;
+async function pollRouteOperation(operationId, successText, timeoutMs = 120000) {
+  const deadline = Date.now() + Math.max(120000, Number(timeoutMs) || 120000);
   while (Date.now() < deadline) {
     const state = await api('get_route_operation', operationId);
     if (!state || !state.ok) {
@@ -1741,7 +1773,7 @@ async function pollRouteOperation(operationId, successText) {
     setRouteOperationStatus(state.message || state.error || '会话通道切换失败。请查看备份并刷新会话后重试。', 'error');
     return;
   }
-  setRouteOperationStatus('后台操作等待超时，仍可能在 Codex 中继续。请稍后刷新会话核对结果。', 'error');
+  setRouteOperationStatus('后台操作等待超时，未确认模型和通道落盘；请勿继续点击，保留备份并重启工具箱后核对。', 'error');
 }
 function toggleSession(id) {
   if (checkedSessions.has(id)) checkedSessions.delete(id); else checkedSessions.add(id);
@@ -2091,7 +2123,7 @@ function readBackgroundForm() {
     background_scope: 'whole',
     border_opacity: 22,
     corner_radius: 12,
-    titlebar_mode: 'normal',
+    titlebar_mode: document.getElementById('titlebar-mode')?.value || 'topbar',
     compact_diff: false,
     animated_gif: document.getElementById('animated-gif').checked,
     animated_mp4: document.getElementById('animated-mp4').checked,
@@ -2111,6 +2143,7 @@ function writeBackgroundForm(data) {
   document.getElementById('background-image-path').value = data.image_path || '';
   document.getElementById('codex-launch-path').value = data.codex_launch_path || '';
   document.getElementById('background-mask').value = data.background_mask;
+  if (document.getElementById('titlebar-mode')) document.getElementById('titlebar-mode').value = data.titlebar_mode || 'normal';
   document.getElementById('panel-opacity').value = data.panel_opacity;
   document.getElementById('sidebar-opacity').value = data.sidebar_opacity;
   document.getElementById('toolbar-opacity').value = data.toolbar_opacity ?? 28;

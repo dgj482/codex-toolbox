@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""生成 Codex 工具箱的原创快捷方式图标。
+"""生成 Codex 工具箱的统一原创图标。
 
 图标仅使用几何图形，不包含 OpenAI、Codex 或第三方品牌标识。
 """
@@ -10,7 +10,9 @@ from PIL import Image, ImageDraw, ImageFilter
 
 
 CANVAS = 1024
-OUTPUT = Path(__file__).resolve().parents[1] / "assets" / "codex_toolbox_shortcut.ico"
+# 主程序、托盘、窗口和快捷方式都使用这一份图标，避免不同入口显示不一致。
+MASTER = Path(__file__).resolve().parents[1] / "assets" / "codex_toolbox_master.png"
+OUTPUT = Path(__file__).resolve().parents[1] / "assets" / "codex_toolbox.ico"
 
 
 def _rounded_mask(size, radius):
@@ -76,7 +78,8 @@ def build_icon():
 
 def main():
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    image = build_icon()
+    # 优先使用项目内保存的主图标源图；没有源图时才回退到旧的几何图形生成器。
+    image = Image.open(MASTER).convert("RGBA") if MASTER.is_file() else build_icon()
     image.save(OUTPUT, format="ICO", sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)])
     print(OUTPUT)
 

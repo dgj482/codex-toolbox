@@ -8,7 +8,7 @@ Windows 本地辅助工具。它把“全局默认通道”和“已有会话的
 
 [下载 Windows 测试版](https://github.com/dgj482/codex-toolbox/releases/latest) · [查看使用手册](docs/使用手册.md) · [报告问题](https://github.com/dgj482/codex-toolbox/issues/new?template=bug_report.yml)
 
-> `0.1.0-beta` Windows x64 测试版。社区项目，非 OpenAI 官方产品，也不代表 OpenAI 认可。会话路由与本地外观均为默认关闭的非官方实验，Codex 更新后可能失效。
+> `0.1.1-beta` Windows x64 测试版。社区项目，非 OpenAI 官方产品，也不代表 OpenAI 认可。会话路由与本地外观均为默认关闭的非官方实验，Codex 更新后可能失效。
 
 | 适合谁 | 能解决什么 |
 | --- | --- |
@@ -46,6 +46,7 @@ Codex 的全局通道适合决定**之后新建的会话**，但不适合管理�
 - 操作前显示将修改的会话、目标供应商、模型和思考强度，确认后才执行。
 - 仅允许在 Codex 已完全退出时执行；先预检、备份，再通过 Codex app-server 尝试操作并校验结果。
 - 不直接改写会话 SQLite 或 JSONL 来实现路由；失败时会尝试恢复原设置。
+- 出现红色“模型残留”时，可用“修复模型残留”按钮仅处理标红会话；仍受 Codex app-server 版本兼容性限制。
 - 适合把高推理、低延迟、低成本或特定供应商能力按任务分开使用，前提是用户自己的供应商账户实际支持对应模型与能力。
 
 这是非官方实验能力。供应商的区域、账号、额度、计费、模型支持和工具调用能力由对应服务决定。
@@ -74,7 +75,7 @@ Codex 的全局通道适合决定**之后新建的会话**，但不适合管理�
 
 ## 快速开始
 
-1. 从 [Releases](../../releases) 下载 `Codex工具箱-0.1.0-beta-windows-x64.zip` 和同名 `.sha256` 文件。
+1. 从 [Releases](../../releases) 下载 `Codex工具箱-0.1.1-beta-windows-x64.zip` 和同名 `.sha256` 文件。
 2. 解压到任意目录，保持 `Codex工具箱.exe` 与 `Codex工具箱认证助手.exe` 在同一目录。
 3. 启动 `Codex工具箱.exe`，添加供应商并使用“全部检测”确认连接。
 4. 若只想影响新会话，在“通道切换”中选择供应商并切换全局默认。

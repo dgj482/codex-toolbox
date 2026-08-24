@@ -2,7 +2,7 @@
 # 不创建带版本号的新目录；下一次运行会覆盖同一份测试版。
 [CmdletBinding()]
 param(
-    [string]$SourceDir = (Join-Path $PSScriptRoot "..\dist\Codex工具箱-0.1.0-beta-windows-x64"),
+    [string]$SourceDir = (Join-Path $PSScriptRoot "..\dist\Codex工具箱-0.1.1-beta-windows-x64"),
     [string]$TargetDir = (Join-Path $PSScriptRoot "..\test-release\Codex工具箱测试版"),
     [string]$ShortcutPath = (Join-Path ([Environment]::GetFolderPath("Desktop")) "Codex工具箱.lnk")
 )
@@ -14,7 +14,7 @@ $target = [IO.Path]::GetFullPath($TargetDir)
 $shortcut = [IO.Path]::GetFullPath($ShortcutPath)
 $mainExe = Join-Path $source "Codex工具箱.exe"
 $sourceZip = "$source.zip"
-$sourceShortcutIcon = Join-Path $PSScriptRoot "..\assets\codex_toolbox_shortcut.ico"
+$sourceShortcutIcon = Join-Path $PSScriptRoot "..\assets\codex_toolbox.ico"
 
 if (-not (Test-Path -LiteralPath $mainExe)) {
     throw "未找到构建产物：$mainExe。请先运行 build.ps1。"
@@ -40,7 +40,15 @@ if (Test-Path -LiteralPath $sourceZip) {
     Set-Content -LiteralPath "$targetZip.sha256" -Value "$hash  $(Split-Path -Leaf $targetZip)" -Encoding utf8NoBOM
 }
 
-$targetShortcutIcon = Join-Path $target "Codex工具箱快捷方式.ico"
+$targetShortcutIcon = Join-Path $target "Codex工具箱图标.ico"
+$legacyTargetIcon = Join-Path $target "Codex工具箱.ico"
+$legacyShortcutIcon = Join-Path $target "Codex工具箱快捷方式.ico"
+if (Test-Path -LiteralPath $legacyTargetIcon) {
+    Remove-Item -LiteralPath $legacyTargetIcon -Force
+}
+if (Test-Path -LiteralPath $legacyShortcutIcon) {
+    Remove-Item -LiteralPath $legacyShortcutIcon -Force
+}
 if (Test-Path -LiteralPath $sourceShortcutIcon) {
     Copy-Item -LiteralPath $sourceShortcutIcon -Destination $targetShortcutIcon -Force
 }
