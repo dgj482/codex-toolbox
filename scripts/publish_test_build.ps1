@@ -2,12 +2,20 @@
 # 不创建带版本号的新目录；下一次运行会覆盖同一份测试版。
 [CmdletBinding()]
 param(
-    [string]$SourceDir = (Join-Path $PSScriptRoot "..\dist\Codex工具箱-0.1.1-beta-windows-x64"),
+    [string]$SourceDir = "",
     [string]$TargetDir = (Join-Path $PSScriptRoot "..\test-release\Codex工具箱测试版"),
     [string]$ShortcutPath = (Join-Path ([Environment]::GetFolderPath("Desktop")) "Codex工具箱.lnk")
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not $SourceDir) {
+    $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
+    $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
+    if (-not (Test-Path -LiteralPath $python)) { $python = (Get-Command python -ErrorAction Stop).Source }
+    $version = (& $python -c "from version import __version__; print(__version__)").Trim()
+    $SourceDir = Join-Path $repoRoot "dist\Codex工具箱-$version-windows-x64"
+}
 
 $source = [IO.Path]::GetFullPath($SourceDir)
 $target = [IO.Path]::GetFullPath($TargetDir)

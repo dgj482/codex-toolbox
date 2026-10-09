@@ -16,8 +16,11 @@ import glob
 import threading
 import queue
 import sys
+import secrets
+import tomllib
 import codex_proxy
 import secret_store
+from version import __version__
 
 
 # 公开版界面已迁移至 PyWebView（codex_app.py）。下方旧版 Tk 类仅保留历史源码，
@@ -45,7 +48,10 @@ BAK_DIR = os.path.join(_app_dir(), "archive_backups")
 PROVIDERS_FILE = os.path.join(_app_dir(), "providers.json")
 THREAD_ROUTES_FILE = os.path.join(_app_dir(), "thread_routes.json")
 PROXY_PORT = 18732
-AUTH_HELPER_NAME = "Codex工具箱认证助手.exe"
+LEGACY_AUTH_HELPER_NAME = "Codex工具箱认证助手.exe"
+BACKUP_MAX_AGE_DAYS = 30
+BACKUP_MAX_BYTES = 512 * 1024 * 1024
+BACKUP_MAX_ENTRIES = 50
 
 OFFICIAL_ID = "openai"
 OFFICIAL_NAME = "OpenAI 登录（当前 Codex 账户）"
@@ -54,6 +60,9 @@ PROVIDER_NAMES = {}
 # 6 秒会造成“实际随后成功、工具箱却已报未确认”的误报；15 秒仍能避免无限等待。
 THREAD_ROUTE_VERIFY_TIMEOUT = 15.0
 THREAD_ROUTE_VERIFY_INTERVAL = 0.25
+THREAD_LIST_CACHE_SECONDS = 8.0
+_thread_list_cache = {"expires": 0.0, "items": None}
+_thread_list_cache_lock = threading.Lock()
 
 
 class SessionRouteUnsupported(RuntimeError):
@@ -195,19 +204,39 @@ PRESETS = [
 ]
 
 
-def codex_running():
+def codex_process_state():
+    """Return the exact processes that make state-changing operations unsafe.
+
+    Detection errors are reported as ``unknown`` so callers can fail closed rather
+    than writing shared Codex state while process ownership is uncertain.
+    """
     try:
+        processes = []
         for image_name in ("Codex.exe", "ChatGPT.exe"):
             out = subprocess.run(
-                ["tasklist", "/FI", f"IMAGENAME eq {image_name}"],
-                capture_output=True, timeout=10,
+                ["tasklist", "/FI", f"IMAGENAME eq {image_name}", "/FO", "CSV", "/NH"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
-            if image_name.encode("ascii") in out.stdout:
-                return True
-        return False
-    except Exception:
-        return False
+            if out.returncode != 0:
+                return {"state": "unknown", "processes": [], "error": f"tasklist failed: {out.returncode}"}
+            for line in out.stdout.splitlines():
+                if not line.lstrip().startswith('"'):
+                    continue
+                try:
+                    import csv
+                    row = next(csv.reader([line]))
+                    if len(row) >= 2 and row[0].lower() == image_name.lower():
+                        processes.append({"name": row[0], "pid": int(row[1]), "path": ""})
+                except (ValueError, StopIteration):
+                    continue
+        return {"state": "running" if processes else "stopped", "processes": processes, "error": ""}
+    except Exception as error:
+        return {"state": "unknown", "processes": [], "error": str(error)[:200]}
+
+
+def codex_running():
+    return codex_process_state()["state"] != "stopped"
 
 
 def read_config_field(key):
@@ -318,7 +347,9 @@ def load_providers():
             for raw in data.get("providers", []):
                 item = dict(raw)
                 encrypted = item.pop("api_key_dpapi", "")
+                encrypted_proxy_token = item.pop("proxy_token_dpapi", "")
                 plaintext = item.get("api_key", "")
+                plaintext_proxy_token = item.get("proxy_token", "")
                 if encrypted:
                     try:
                         item["api_key"] = secret_store.unprotect_secret(encrypted)
@@ -326,6 +357,16 @@ def load_providers():
                         item["api_key"] = ""
                 elif plaintext:
                     plaintext_migration = True
+                if encrypted_proxy_token:
+                    try:
+                        item["proxy_token"] = secret_store.unprotect_secret(encrypted_proxy_token)
+                    except Exception:
+                        item["proxy_token"] = ""
+                elif plaintext_proxy_token:
+                    plaintext_migration = True
+                if item.get("proxy") and not item.get("proxy_token"):
+                    item["proxy_token"] = secrets.token_urlsafe(32)
+                    needs_rewrite = True
                 provs.append(normalize_provider(item))
             # 早期版本迁移：只自动补回官方 DashScope 配置，避免已删除的普通供应商反复出现。
             known = {p.get("id") for p in provs}
@@ -357,9 +398,13 @@ def save_providers(provs):
     for provider in provs:
         item = dict(provider)
         secret = item.pop("api_key", "")
+        proxy_token = item.pop("proxy_token", "")
         item.pop("api_key_dpapi", None)
+        item.pop("proxy_token_dpapi", None)
         if secret:
             item["api_key_dpapi"] = secret_store.protect_secret(secret)
+        if proxy_token:
+            item["proxy_token_dpapi"] = secret_store.protect_secret(proxy_token)
         serialized.append(item)
     tmp = PROVIDERS_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -377,8 +422,42 @@ def load_thread_routes():
 
 
 def save_thread_routes(routes):
-    with open(THREAD_ROUTES_FILE, "w", encoding="utf-8") as f:
+    tmp = THREAD_ROUTES_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump({"version": 1, "routes": routes}, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, THREAD_ROUTES_FILE)
+
+
+def provider_dependencies(provider_id):
+    """Return route and state references that must be resolved before deletion."""
+    try:
+        with open(THREAD_ROUTES_FILE, encoding="utf-8") as handle:
+            route_data = json.load(handle)
+        if not isinstance(route_data, dict) or not isinstance(route_data.get("routes"), dict):
+            raise ValueError("Invalid route map")
+        routes = route_data["routes"]
+    except FileNotFoundError:
+        routes = {}
+    except (OSError, ValueError, TypeError):
+        return {"route_ids": [], "state_ids": [], "unknown": True}
+    route_ids = [
+        thread_id for thread_id, route in routes.items()
+        if isinstance(route, dict) and route.get("provider") == provider_id
+    ]
+    state_ids = []
+    if os.path.isfile(STATE_DB):
+        try:
+            conn = sqlite3.connect(STATE_DB, timeout=5)
+            try:
+                state_ids = [row[0] for row in conn.execute(
+                    "SELECT id FROM threads WHERE model_provider=?", (provider_id,)
+                ).fetchall()]
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            # An unreadable state DB is a dependency state we cannot safely disprove.
+            return {"route_ids": route_ids, "state_ids": [], "unknown": True}
+    return {"route_ids": route_ids, "state_ids": state_ids, "unknown": False}
 
 
 def set_thread_route_mode(tids, mode, provider=None):
@@ -432,22 +511,98 @@ def _toml_string(value):
 
 
 def _auth_helper_command():
-    """返回认证助手命令；打包版把助手复制到稳定的当前用户目录。"""
+    """Use the main executable's credential-only mode instead of a second binary."""
     if not getattr(sys, "frozen", False):
-        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "auth_helper.py")
-        return sys.executable, [script]
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "codex_app.py")
+        return sys.executable, [script, "--auth-secret"]
+    return sys.executable, ["--auth-secret"]
 
-    sibling = os.path.join(os.path.dirname(sys.executable), AUTH_HELPER_NAME)
-    if not os.path.isfile(sibling):
-        raise RuntimeError(f"缺少认证助手：{AUTH_HELPER_NAME}。请重新解压完整发布包。")
-    bin_dir = os.path.join(_app_dir(), "bin")
-    os.makedirs(bin_dir, exist_ok=True)
-    installed = os.path.join(bin_dir, AUTH_HELPER_NAME)
-    if not os.path.isfile(installed) or os.path.getsize(installed) != os.path.getsize(sibling):
-        tmp = installed + ".tmp"
-        shutil.copy2(sibling, tmp)
-        os.replace(tmp, installed)
-    return installed, []
+
+def migrate_legacy_auth_commands():
+    """Move only toolbox-owned command-auth entries to the single-file executable."""
+    if not getattr(sys, "frozen", False) or not os.path.isfile(CONFIG):
+        return False
+    with open(CONFIG, encoding="utf-8") as handle:
+        content = handle.read()
+    parsed = tomllib.loads(content)
+    old_paths = {
+        os.path.normcase(os.path.abspath(os.path.join(_app_dir(), "bin", LEGACY_AUTH_HELPER_NAME))),
+        os.path.normcase(os.path.abspath(os.path.join(os.path.dirname(sys.executable), LEGACY_AUTH_HELPER_NAME))),
+    }
+    updates = {}
+    for pid, provider in parsed.get("model_providers", {}).items():
+        auth = provider.get("auth", {}) if isinstance(provider, dict) else {}
+        command, args = auth.get("command"), auth.get("args")
+        if not isinstance(command, str) or not isinstance(args, list):
+            continue
+        if os.path.normcase(os.path.abspath(command)) not in old_paths:
+            continue
+        if args not in ([pid], ["--proxy", pid]):
+            continue
+        updates[pid] = ["--auth-secret", *args]
+    if not updates:
+        return False
+
+    lines = content.splitlines(keepends=True)
+    for pid, args in updates.items():
+        header = f"[model_providers.{pid}.auth]"
+        starts = [i for i, line in enumerate(lines) if line.strip() == header]
+        if len(starts) != 1:
+            raise RuntimeError(f"认证配置区块不唯一：{pid}")
+        start = starts[0] + 1
+        end = next((i for i in range(start, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
+        for key, value in (("command", _toml_string(sys.executable)),
+                           ("args", "[" + ", ".join(_toml_string(arg) for arg in args) + "]")):
+            matches = [i for i in range(start, end) if re.match(rf"^\s*{key}\s*=", lines[i])]
+            if len(matches) != 1:
+                raise RuntimeError(f"认证配置字段不唯一：{pid}.{key}")
+            index = matches[0]
+            newline = "\r\n" if lines[index].endswith("\r\n") else "\n" if lines[index].endswith("\n") else ""
+            indent = re.match(r"^\s*", lines[index]).group(0)
+            lines[index] = f"{indent}{key} = {value}{newline}"
+        timeout_lines = [i for i in range(start, end) if re.match(r"^\s*timeout_ms\s*=", lines[i])]
+        if len(timeout_lines) > 1:
+            raise RuntimeError(f"认证超时字段不唯一：{pid}")
+        if timeout_lines:
+            lines[timeout_lines[0]] = "timeout_ms = 15000\n"
+        else:
+            lines.insert(end, "timeout_ms = 15000\n")
+    updated = "".join(lines)
+    verified = tomllib.loads(updated)
+    for pid, args in updates.items():
+        auth = verified["model_providers"][pid]["auth"]
+        if auth.get("command") != sys.executable or auth.get("args") != args or auth.get("timeout_ms") != 15000:
+            raise RuntimeError(f"认证配置迁移校验失败：{pid}")
+    os.makedirs(BAK_DIR, exist_ok=True)
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    shutil.copy2(CONFIG, os.path.join(BAK_DIR, f"config.toml.bak_{stamp}"))
+    tmp = CONFIG + ".toolbox.tmp"
+    with open(tmp, "w", encoding="utf-8", newline="") as handle:
+        handle.write(updated)
+    os.replace(tmp, CONFIG)
+    prune_backups()
+    return True
+
+
+def remove_unused_legacy_auth_helpers():
+    """Remove old helper binaries only after no Codex auth entry references them."""
+    if not getattr(sys, "frozen", False):
+        return
+    with open(CONFIG, encoding="utf-8") as handle:
+        content = handle.read()
+    parsed = tomllib.loads(content)
+    for provider in parsed.get("model_providers", {}).values():
+        auth = provider.get("auth", {}) if isinstance(provider, dict) else {}
+        if os.path.basename(str(auth.get("command", ""))).casefold() == LEGACY_AUTH_HELPER_NAME.casefold():
+            return
+    for path in (os.path.join(_app_dir(), "bin", LEGACY_AUTH_HELPER_NAME),
+                 os.path.join(os.path.dirname(sys.executable), LEGACY_AUTH_HELPER_NAME)):
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
 
 
 def _provider_block(pid, p):
@@ -457,18 +612,25 @@ def _provider_block(pid, p):
     if p.get("base_url"):
         block.append(f'base_url = {_toml_string(p["base_url"])}')
     block.append(f'wire_api = {_toml_string(p.get("wire_api", "responses"))}')
-    if p.get("api_key") and not p.get("proxy"):
+    if p.get("requires_openai_auth"):
+        block.append("requires_openai_auth = true")
+    auth_args = None
+    if p.get("proxy") and p.get("proxy_token"):
+        auth_args = ["--proxy", pid]
+    elif p.get("api_key") and not p.get("proxy"):
+        auth_args = [pid]
+    if auth_args:
         command, prefix_args = _auth_helper_command()
-        args = prefix_args + [pid]
+        args = prefix_args + auth_args
         block.extend([
             "",
             f"[model_providers.{pid}.auth]",
             f"command = {_toml_string(command)}",
             "args = [" + ", ".join(_toml_string(item) for item in args) + "]",
-            "timeout_ms = 5000",
+            "timeout_ms = 15000",
             "refresh_interval_ms = 0",
         ])
-    else:
+    elif not p.get("requires_openai_auth"):
         block.append("requires_openai_auth = false")
     return block
 
@@ -534,6 +696,7 @@ def apply_provider(pid, proxy_url=None):
     with open(tmp, "w", encoding="utf-8", newline="\n") as f:
         f.write(content)
     os.replace(tmp, CONFIG)
+    prune_backups()
     return p["name"]
 
 
@@ -565,6 +728,7 @@ def ensure_provider_config(pid, proxy_url=None):
     with open(tmp, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(updated)
     os.replace(tmp, CONFIG)
+    prune_backups()
 
 
 def _friendly_titles():
@@ -582,16 +746,86 @@ def _friendly_titles():
     return titles
 
 
-def list_unarchived():
+def _state_unarchived_rows():
     conn = sqlite3.connect(STATE_DB)
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT id, title, model_provider, model, reasoning_effort "
-        "FROM threads WHERE archived = 0 ORDER BY created_at"
-    )
-    rows = cur.fetchall()
-    conn.close()
-    return rows, _friendly_titles()
+    try:
+        return conn.execute(
+            "SELECT id, title, model_provider, model, reasoning_effort "
+            "FROM threads WHERE archived = 0 ORDER BY created_at"
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def _live_unarchived_threads():
+    """Use the same public history API intended for Codex task-list interfaces."""
+    now = time.monotonic()
+    with _thread_list_cache_lock:
+        cached = _thread_list_cache.get("items")
+        if cached is not None and now < float(_thread_list_cache.get("expires") or 0):
+            return list(cached)
+
+        executable = _find_codex_executable()
+        client = _CodexAppServer(executable, timeout=15)
+        try:
+            items = []
+            cursor = None
+            for _ in range(20):
+                params = {
+                    "limit": 100,
+                    "sortKey": "recency_at",
+                    "sortDirection": "desc",
+                    "archived": False,
+                }
+                if cursor:
+                    params["cursor"] = cursor
+                result = client.request("thread/list", params) or {}
+                if not isinstance(result, dict) or not isinstance(result.get("data"), list):
+                    raise RuntimeError("Codex app-server 返回的任务列表格式无效")
+                items.extend(
+                    item for item in result["data"]
+                    if isinstance(item, dict) and item.get("id") and not item.get("ephemeral")
+                )
+                cursor = result.get("nextCursor")
+                if not cursor:
+                    break
+            else:
+                raise RuntimeError("Codex 任务列表分页超过安全上限")
+        finally:
+            client.close()
+
+        _thread_list_cache["items"] = list(items)
+        _thread_list_cache["expires"] = time.monotonic() + THREAD_LIST_CACHE_SECONDS
+        return items
+
+
+def list_unarchived():
+    state_rows = _state_unarchived_rows()
+    state_by_id = {row[0]: row for row in state_rows}
+    # Do not silently fall back to raw SQLite here: that was the source of the
+    # mismatch with the current Codex sidebar. A live-list failure must remain visible.
+    live_items = _live_unarchived_threads()
+
+    rows = []
+    titles = {}
+    for item in live_items:
+        thread_id = str(item["id"])
+        state = state_by_id.get(thread_id)
+        live_title = str(item.get("name") or item.get("preview") or "").strip()
+        if state:
+            _, state_title, provider, model, effort = state
+            rows.append((thread_id, state_title, provider, model, effort))
+        else:
+            rows.append((
+                thread_id,
+                live_title,
+                str(item.get("modelProvider") or OFFICIAL_ID),
+                str(item.get("model") or ""),
+                str(item.get("reasoningEffort") or ""),
+            ))
+        if live_title:
+            titles[thread_id] = live_title
+    return rows, titles
 
 
 def list_archived():
@@ -633,6 +867,83 @@ def _backup_catalog_if_present(destination):
     """catalog 是侧栏缓存，缺失时不阻断会话路由、归档或恢复。"""
     if os.path.isfile(CATALOG_DB):
         _backup_sqlite(CATALOG_DB, destination)
+
+
+def _backup_category(name):
+    for prefix in ("archived_sidebar_repair_", "thread_route_", "unarchive_", "archive_", "config.toml.bak_"):
+        if name.startswith(prefix):
+            return prefix.rstrip("_")
+    return "other"
+
+
+def _path_size(path):
+    if os.path.isfile(path):
+        return os.path.getsize(path)
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(root, name))
+            except OSError:
+                pass
+    return total
+
+
+def backup_inventory():
+    """Return top-level backup count and bytes without reading backup contents."""
+    if not os.path.isdir(BAK_DIR):
+        return {"count": 0, "bytes": 0}
+    entries = [os.path.join(BAK_DIR, name) for name in os.listdir(BAK_DIR)]
+    return {"count": len(entries), "bytes": sum(_path_size(path) for path in entries)}
+
+
+def prune_backups(now=None):
+    """Apply age, count, and size limits while retaining the newest item per category."""
+    if not os.path.isdir(BAK_DIR):
+        return {"removed": 0, "freed_bytes": 0, **backup_inventory()}
+    now = time.time() if now is None else float(now)
+    root = os.path.abspath(BAK_DIR)
+    entries = []
+    for name in os.listdir(root):
+        path = os.path.abspath(os.path.join(root, name))
+        if os.path.dirname(path) != root:
+            continue
+        try:
+            entries.append({
+                "path": path, "name": name, "category": _backup_category(name),
+                "mtime": os.path.getmtime(path), "size": _path_size(path),
+            })
+        except OSError:
+            continue
+    newest = {}
+    for entry in entries:
+        current = newest.get(entry["category"])
+        if current is None or entry["mtime"] > current["mtime"]:
+            newest[entry["category"]] = entry
+    protected = {entry["path"] for entry in newest.values()}
+    total_bytes = sum(entry["size"] for entry in entries)
+    total_count = len(entries)
+    cutoff = now - BACKUP_MAX_AGE_DAYS * 86400
+    removed = 0
+    freed = 0
+    for entry in sorted(entries, key=lambda item: item["mtime"]):
+        if entry["path"] in protected:
+            continue
+        over_limit = total_count > BACKUP_MAX_ENTRIES or total_bytes > BACKUP_MAX_BYTES
+        if entry["mtime"] >= cutoff and not over_limit:
+            continue
+        try:
+            if os.path.isdir(entry["path"]):
+                shutil.rmtree(entry["path"])
+            else:
+                os.remove(entry["path"])
+        except OSError:
+            continue
+        total_count -= 1
+        total_bytes -= entry["size"]
+        removed += 1
+        freed += entry["size"]
+    return {"removed": removed, "freed_bytes": freed, "count": total_count, "bytes": total_bytes}
 
 
 def _archived_state_map(thread_ids):
@@ -735,7 +1046,7 @@ def _find_codex_executable():
 
 
 class _CodexAppServer:
-    """最小 JSON-RPC 客户端：只通过 Codex app-server 执行会话归档/恢复。"""
+    """Minimal JSON-RPC client for Codex task listing, routing, archive and restore."""
 
     def __init__(self, executable, timeout=20):
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -761,7 +1072,7 @@ class _CodexAppServer:
         threading.Thread(target=self._read_stdout, daemon=True).start()
         threading.Thread(target=self._read_stderr, daemon=True).start()
         self.request("initialize", {
-            "clientInfo": {"name": "codex-toolbox", "version": "0.1.1-beta"},
+            "clientInfo": {"name": "codex-toolbox", "version": __version__},
             # thread/resume.excludeTurns 是 app-server 标注的实验字段，
             # 必须在初始化时显式协商，否则当前 app-server 会拒绝该请求。
             "capabilities": {
@@ -1017,6 +1328,8 @@ def repair_archived_session_index(candidate_ids=None, backup_dir=None):
                 # 原始错误会携带备份位置，避免二次异常掩盖它。
                 pass
         raise
+    if backup_dir is None:
+        prune_backups()
     return stamp, len(archived_ids), removed_catalog_rows, repair_backup
 
 
@@ -1149,6 +1462,7 @@ def archive_threads(target_ids):
         if client:
             client.close()
 
+    prune_backups()
     return stamp
 
 
@@ -1237,6 +1551,7 @@ def unarchive_threads(target_ids):
     finally:
         if client:
             client.close()
+    prune_backups()
     return stamp
 
 
@@ -1387,6 +1702,7 @@ def set_threads_provider_official(
     finally:
         if client:
             client.close()
+    prune_backups()
     return stamp
 
 
@@ -1515,7 +1831,8 @@ class ProviderDialog(ttk.Toplevel):
             "api_key": self.e_key.get().strip(),
             "model": self.e_model.get().strip(),
             "wire_api": self.cb_wire.get() or "responses",
-            "requires_openai_auth": False,
+            # 编辑已有供应商时保留其认证模式，避免下次保存覆盖手动设置。
+            "requires_openai_auth": bool(self.provider and self.provider.get("requires_openai_auth", False)),
         }
         if self.var_proxy.get():
             prov["proxy"] = True

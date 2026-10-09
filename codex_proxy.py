@@ -5,6 +5,8 @@ Codex (Responses) -> 本代理(127.0.0.1:PORT) -> 上游 Chat Completions API（
 不支持：computer use、文件搜索、图像等多模态高级功能
 """
 import json
+import hmac
+import hashlib
 import os
 import threading
 import time
@@ -14,7 +16,14 @@ from urllib import request as urlreq
 from urllib import error as urlerr
 import secret_store
 
-VERSION = "0.1"
+VERSION = "0.2"
+
+
+def config_fingerprint(upstream_base, api_key, model, provider_id):
+    """Identify a proxy's upstream configuration after caller authentication."""
+    values = [upstream_base, api_key, model, provider_id]
+    payload = json.dumps(values, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 LOG_FILE = os.path.join(secret_store.app_data_dir(), "proxy.log")
 LOG_ENABLED = os.environ.get("CODEX_TOOLBOX_DEBUG_PROXY") == "1"
@@ -37,6 +46,7 @@ class ProxyConfig:
     model = "deepseek-chat"
     port = 18732
     provider_id = ""
+    proxy_token = ""
 
 
 class UnsupportedCapabilityError(ValueError):
@@ -383,8 +393,24 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _authorized(self):
+        expected = f"Bearer {ProxyConfig.proxy_token}"
+        supplied = self.headers.get("Authorization", "")
+        if ProxyConfig.proxy_token and hmac.compare_digest(supplied, expected):
+            return True
+        self.send_response(401)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("WWW-Authenticate", "Bearer")
+        payload = b'{"error":{"message":"Unauthorized","type":"authentication_error"}}'
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+        return False
+
     def do_POST(self):
         path = self.path.split("?")[0]
+        if not self._authorized():
+            return
         try:
             length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(length) if length else b"{}"
@@ -423,15 +449,19 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?")[0]
+        if not self._authorized():
+            return
         if path.endswith("/status"):
-            import hashlib
             data = {
                 "ok": True,
                 "service": "codex-toolbox-proxy",
-                "upstream": ProxyConfig.upstream_base,
+                "version": VERSION,
+                "auth_required": True,
                 "model": ProxyConfig.model,
                 "provider_id": ProxyConfig.provider_id,
-                "key_hash": hashlib.sha256(ProxyConfig.api_key.encode()).hexdigest()[:12] if ProxyConfig.api_key else "",
+                "config_fingerprint": config_fingerprint(
+                    ProxyConfig.upstream_base, ProxyConfig.api_key, ProxyConfig.model, ProxyConfig.provider_id,
+                ),
             }
             payload = json.dumps(data).encode("utf-8")
             self.send_response(200)
@@ -457,11 +487,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
-def start_proxy(upstream_base, api_key, model, port=18732, provider_id=""):
+def start_proxy(upstream_base, api_key, model, port=18732, provider_id="", proxy_token=""):
+    if not proxy_token:
+        raise ValueError("本地代理缺少调用令牌")
     ProxyConfig.upstream_base = upstream_base
     ProxyConfig.api_key = api_key
     ProxyConfig.model = model
     ProxyConfig.provider_id = provider_id
+    ProxyConfig.proxy_token = proxy_token
     server = ThreadingHTTPServer(("127.0.0.1", port), ProxyHandler)
     actual_port = server.server_address[1]
     ProxyConfig.port = actual_port
@@ -477,7 +510,8 @@ if __name__ == "__main__":
     port = int(sys.argv[3]) if len(sys.argv) > 3 else 18732
     provider_id = sys.argv[4] if len(sys.argv) > 4 else ""
     key = secret_store.read_provider_secret(provider_id)
-    server, p = start_proxy(base, key, model, port, provider_id=provider_id)
+    proxy_token = secret_store.read_provider_proxy_secret(provider_id)
+    server, p = start_proxy(base, key, model, port, provider_id=provider_id, proxy_token=proxy_token)
     print(f"Codex 翻译代理运行中: http://127.0.0.1:{p}/v1 -> {base}")
     print(f"上游模型: {model}")
     try:

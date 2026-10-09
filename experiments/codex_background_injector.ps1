@@ -85,6 +85,7 @@ if ($PSVersionTable.PSVersion.Major -ge 7) {
 $utf8 = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = $utf8
 $OutputEncoding = $utf8
+. (Join-Path $PSScriptRoot "codex_package_activation.ps1")
 
 function Get-CodexDesktopProcess {
     param([string]$ExpectedExecutable = "")
@@ -297,6 +298,10 @@ if ($runningCodex) {
     # 允许启动较慢时再次执行脚本，直接附加到此前已打开的本机调试端口。
     $targets = Wait-DebugEndpoint -TargetPort $Port -TimeoutSeconds $AttachWaitSeconds
     if (-not $targets) {
+        if ($Remove) {
+            Write-Host "当前 Codex 没有可连接的背景页面，无需恢复。"
+            exit 0
+        }
         if (-not $Restart) {
             throw "Codex 当前正在运行，但不是通过背景实验启动的，未开放本机调试端口。请完全退出 Codex 后再运行此脚本。"
         }
@@ -323,13 +328,18 @@ if ($runningCodex) {
         Write-Host "检测到已开放的本机调试端口，直接附加到当前 Codex …"
     }
 }
+if ($Remove -and -not $targets) {
+    Write-Host "当前没有可连接的背景页面，无需恢复。"
+    exit 0
+}
 if (-not $targets) {
     $codexExecutable = Get-CodexExecutable
-    $appProcess = Start-Process -FilePath $codexExecutable -ArgumentList @(
-        "--remote-debugging-address=127.0.0.1",
-        "--remote-debugging-port=$Port"
-    ) -PassThru
-    Write-Host "已直接启动 Codex（PID：$($appProcess.Id)），最多等待 75 秒开启本机调试端口 $Port …"
+    # Keep a future toolbox launch from reusing this frozen process's temporary Python runtime.
+    Get-ChildItem Env: | Where-Object { $_.Name -like '_PYI_*' } |
+        ForEach-Object { Remove-Item -LiteralPath ("Env:" + $_.Name) -ErrorAction SilentlyContinue }
+    Remove-Item Env:PYINSTALLER_RESET_ENVIRONMENT -ErrorAction SilentlyContinue
+    $appProcessId = Start-CodexDesktopApp -Executable $codexExecutable -Port $Port
+    Write-Host "已通过 Windows 包激活 Codex（PID：$appProcessId），最多等待 75 秒开启本机调试端口 $Port …"
     $targets = Wait-DebugEndpoint -TargetPort $Port
 }
 

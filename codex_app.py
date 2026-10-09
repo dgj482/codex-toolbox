@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Codex 工具箱 0.1.1-beta（PyWebView 界面）
+"""Codex 工具箱（PyWebView 界面）
 前端：ui.html（HTML/CSS/JS），后端：本文件 Api 类 + codex_toolbox 逻辑
 运行：python codex_app.py （需 pywebview + WebView2）
 """
@@ -10,12 +10,18 @@ import threading
 import glob
 import subprocess
 import re
+import secrets
 import shutil
 import time
+import urllib.request
 import webview
 import codex_toolbox as core
+import secret_store
+from codex_surface_translation import OpenAICompatibleTranslator, SurfaceTranslationController, select_codex_page_target
+from version import __version__
 
 UI_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui.html")
+CODEX_EXPERIMENT_PORT = 9229
 
 
 def _resource_path(*parts):
@@ -58,6 +64,9 @@ class Api:
         # 主窗口对象必须是私有属性，否则扫描 Window 的内部对象图会中断导出，
         # 页面便会出现“window.pywebview.api[method] is not a function”。
         self._window = None
+        self._translation_controller = None
+        self._translation_last_error = ""
+        self._translation_log_lock = threading.Lock()
         # 启动时只读取状态，绝不因“检测到旧配置”自动改写用户的 Codex 配置。
         # 历史迁移函数保留给维护者手动处理，不作为公开版启动路径的一部分。
         self.migrated_dashscope = False
@@ -66,6 +75,19 @@ class Api:
         """保存主窗口，用于调用系统文件选择器。"""
         self._window = window
 
+    def get_app_info(self):
+        return {"version": __version__, "auth_migration_error": getattr(self, "_auth_migration_error", "")}
+
+    @staticmethod
+    def _mutation_block_reason():
+        state = core.codex_process_state()
+        if state["state"] == "stopped":
+            return ""
+        if state["state"] == "unknown":
+            return "无法确认 Codex 是否已退出；为保护会话数据，本次操作已停止。"
+        labels = [f"{item['name']} (PID {item['pid']})" for item in state["processes"]]
+        return "请先退出以下进程后再操作：" + "、".join(labels)
+
     # ---------- 社区实验开关 ----------
     @staticmethod
     def _community_experiments_file():
@@ -73,8 +95,15 @@ class Api:
 
     @staticmethod
     def _community_experiment_defaults():
-        # 公开版默认关闭；用户需在界面中明确确认后才可执行。
-        return {"session_routing": False, "local_appearance": False}
+        # 首页是永久控制中心；普通功能默认可见，实验功能继续默认关闭。
+        return {
+            "channel_switching": True,
+            "session_routing": False,
+            "session_archive": True,
+            "local_appearance": False,
+            "surface_translation": False,
+            "diagnostics": True,
+        }
 
     def _load_community_experiments(self):
         settings = self._community_experiment_defaults()
@@ -95,6 +124,16 @@ class Api:
         if feature not in defaults:
             return {"ok": False, "error": "未知实验功能"}
         settings = self._load_community_experiments()
+        if settings[feature] and not enabled:
+            try:
+                if feature == "surface_translation":
+                    self.stop_surface_translation()
+                elif feature == "local_appearance":
+                    removed = self.remove_background()
+                    if not removed.get("ok"):
+                        return {"ok": False, "error": "无法恢复当前外观：" + removed.get("error", "未知错误")}
+            except Exception as error:
+                return {"ok": False, "error": f"无法关闭功能：{error}"}
         settings[feature] = bool(enabled)
         path = self._community_experiments_file()
         temporary = f"{path}.tmp-{os.getpid()}"
@@ -105,6 +144,16 @@ class Api:
         except OSError as e:
             return {"ok": False, "error": str(e)}
         return {"ok": True, "features": settings}
+
+    def get_feature_hub(self):
+        features = self._load_community_experiments()
+        return {
+            "features": features,
+            "configured": {
+                "local_appearance": os.path.isfile(self._background_settings_file()),
+                "surface_translation": os.path.isfile(self._translation_settings_file()),
+            },
+        }
 
     # ---------- 实验外观 ----------
     @staticmethod
@@ -332,6 +381,37 @@ class Api:
             "没有开放调试端口", "没有找到可注入的 Codex 页面",
         ))
 
+    @staticmethod
+    def _validate_background_media(settings):
+        image_path = settings["image_path"]
+        if not os.path.isfile(image_path):
+            return "请先选择有效的本地背景图片"
+        extension = os.path.splitext(image_path)[1].lower()
+        if extension not in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4"):
+            return "仅支持 PNG、JPG、JPEG、WEBP、GIF 或 MP4 背景"
+        if extension == ".gif":
+            if not settings["animated_gif"]:
+                return "GIF 动态背景默认关闭，请勾选“启用动态 GIF 背景”后再应用"
+            if os.path.getsize(image_path) > 3 * 1024 * 1024:
+                return "动态 GIF 请控制在 3 MB 以内，避免占用过高或调试注入失败"
+        if extension == ".mp4":
+            if not settings["animated_mp4"]:
+                return "MP4 动态背景默认关闭，请勾选“启用本地 MP4 背景”后再应用"
+            if os.path.getsize(image_path) > 30 * 1024 * 1024:
+                return "MP4 请控制在 30 MB 以内；为兼容 Codex 的本地安全策略，视频会临时载入当前窗口内存"
+        return ""
+
+    def save_background_settings(self, data):
+        try:
+            settings = self._normalized_background_settings(data)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "外观参数格式不正确"}
+        error = self._validate_background_media(settings)
+        if error:
+            return {"ok": False, "error": error}
+        self._save_background_settings(settings)
+        return {"ok": True, "message": "背景设置已保存；下次从首页启动 Codex 时生效。"}
+
     def apply_background(self, data, restart=True):
         if not self._load_community_experiments()["local_appearance"]:
             return {"ok": False, "error": "请先在“本地外观实验”中确认并启用此非官方功能"}
@@ -340,26 +420,16 @@ class Api:
         except (TypeError, ValueError):
             return {"ok": False, "error": "外观参数格式不正确"}
         image_path = settings["image_path"]
-        if not os.path.isfile(image_path):
-            return {"ok": False, "error": "请先选择有效的本地背景图片"}
+        media_error = self._validate_background_media(settings)
+        if media_error:
+            return {"ok": False, "error": media_error}
         extension = os.path.splitext(image_path)[1].lower()
-        if extension not in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4"):
-            return {"ok": False, "error": "仅支持 PNG、JPG、JPEG、WEBP、GIF 或 MP4 背景"}
-        if extension == ".gif":
-            if not settings["animated_gif"]:
-                return {"ok": False, "error": "GIF 动态背景默认关闭，请勾选“启用动态 GIF 背景”后再应用"}
-            if os.path.getsize(image_path) > 3 * 1024 * 1024:
-                return {"ok": False, "error": "动态 GIF 请控制在 3 MB 以内，避免占用过高或调试注入失败"}
-        if extension == ".mp4":
-            if not settings["animated_mp4"]:
-                return {"ok": False, "error": "MP4 动态背景默认关闭，请勾选“启用本地 MP4 背景”后再应用"}
-            if os.path.getsize(image_path) > 30 * 1024 * 1024:
-                return {"ok": False, "error": "MP4 请控制在 30 MB 以内；为兼容 Codex 的本地安全策略，视频会临时载入当前窗口内存"}
         try:
             script = _resource_path("experiments", "codex_background_injector.ps1")
             if not os.path.isfile(script):
                 raise RuntimeError("工具箱内置的背景实验脚本缺失，请重新安装工具箱")
-            command = [self._find_pwsh(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script]
+            command = [self._find_pwsh(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
+                       "-Port", str(CODEX_EXPERIMENT_PORT)]
             if settings["codex_launch_path"]:
                 command += ["-CodexExecutable", settings["codex_launch_path"]]
             if extension == ".mp4":
@@ -435,6 +505,305 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    # ---------- Codex 表层翻译 ----------
+    @staticmethod
+    def _translation_settings_file():
+        return os.path.join(core._app_dir(), "surface_translation.json")
+
+    @staticmethod
+    def _translation_defaults():
+        return {
+            "provider_id": "", "model": "", "codex_launch_path": "",
+            "translate_interface": True, "translate_messages": True,
+            "translate_input": True, "port": CODEX_EXPERIMENT_PORT,
+        }
+
+    def _load_translation_settings(self):
+        settings = self._translation_defaults()
+        try:
+            with open(self._translation_settings_file(), encoding="utf-8") as handle:
+                saved = json.load(handle)
+            if isinstance(saved, dict):
+                settings.update({key: saved[key] for key in settings if key in saved})
+                if int(saved.get("version", 1) or 1) < 2:
+                    settings["translate_messages"] = True
+        except (OSError, json.JSONDecodeError):
+            pass
+        return settings
+
+    def _normalized_translation_settings(self, data):
+        data = data if isinstance(data, dict) else {}
+        result = {
+            "provider_id": str(data.get("provider_id") or "").strip(),
+            "model": str(data.get("model") or "").strip(),
+            "translate_interface": bool(data.get("translate_interface", True)),
+            "translate_messages": bool(data.get("translate_messages", True)),
+            "translate_input": bool(data.get("translate_input", True)),
+        }
+        launch_path = str(data.get("codex_launch_path") or "").strip()
+        if launch_path:
+            launch_path = os.path.abspath(os.path.expandvars(launch_path))
+            if not launch_path.lower().endswith(".exe") or not os.path.isfile(launch_path):
+                raise ValueError("指定的 Codex 启动程序不存在或不是 .exe 文件")
+        result["codex_launch_path"] = launch_path
+        # 背景和翻译必须附加到同一个 Codex 调试会话。端口不是用户设置，
+        # 忽略旧配置中的其他端口，避免两个功能互相重启并让覆盖层掉线。
+        result["port"] = CODEX_EXPERIMENT_PORT
+        if not any((result["translate_interface"], result["translate_messages"], result["translate_input"])):
+            raise ValueError("请至少勾选一项需要翻译的内容")
+        return result
+
+    def _save_translation_settings(self, settings):
+        path = self._translation_settings_file()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        temporary = f"{path}.tmp-{os.getpid()}"
+        with open(temporary, "w", encoding="utf-8") as handle:
+            json.dump({"version": 2, **settings}, handle, ensure_ascii=False, indent=2)
+        os.replace(temporary, path)
+
+    def get_translation_settings(self):
+        settings = self._load_translation_settings()
+        providers = []
+        for provider in core.load_providers():
+            if not isinstance(provider, dict):
+                continue
+            if provider.get("id") == core.OFFICIAL_ID:
+                continue
+            base_url = provider.get("upstream_base") if provider.get("proxy") else provider.get("base_url")
+            ready = bool(base_url and provider.get("model") and (
+                provider.get("api_key") or str(base_url).startswith(("http://127.0.0.1", "http://localhost"))
+            ))
+            providers.append({
+                "id": provider.get("id", ""), "name": provider.get("name", provider.get("id", "")),
+                "model": provider.get("model", ""), "ready": ready,
+            })
+        controller = self._translation_controller
+        return {**settings, "providers": providers, "running": controller is not None,
+                "connected": bool(controller and controller.is_connected),
+                "last_error": self._translation_last_error}
+
+    def _create_surface_translator(self, settings):
+        if not (settings["translate_messages"] or settings["translate_input"]):
+            return None
+        provider = next((item for item in core.load_providers()
+                         if isinstance(item, dict) and item.get("id") == settings["provider_id"]), None)
+        if not provider or provider.get("id") == core.OFFICIAL_ID:
+            raise ValueError(
+                "聊天正文或输入框翻译需要使用 AI。请先到“通道切换”添加一个可用的 AI 服务，"
+                "然后回到这里选择它。只翻译固定界面则不需要选择。"
+            )
+        return OpenAICompatibleTranslator(
+            provider,
+            settings["model"],
+            os.path.join(core._app_dir(), "surface_translation_cache.sqlite"),
+        )
+
+    def save_surface_translation_settings(self, data):
+        try:
+            settings = self._normalized_translation_settings(data)
+            self._create_surface_translator(settings)
+            self._save_translation_settings(settings)
+            return {"ok": True, "message": "翻译设置已保存；下次从首页启动 Codex 时生效。"}
+        except Exception as error:
+            return {"ok": False, "error": str(error)}
+
+    @staticmethod
+    def _translation_launcher_error(detail):
+        clean = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", detail or "")
+        if "ParserError" in clean or "意外的标记" in clean:
+            return "工具箱里的启动文件有语法错误，请安装最新修正版"
+        if "Codex 正在普通模式运行" in clean:
+            return "当前 Codex 是普通模式运行，无法附加功能。请回到首页使用统一的“启动 Codex”按钮。"
+        if "未开放临时调试端口" in clean:
+            return "Codex 已经打开，但工具箱没有连接成功。请完全退出 Codex 后再试一次。"
+        return " ".join(clean.replace("\r", " ").replace("\n", " ").split())[-400:] or "无法启动表层翻译"
+
+    def _translation_failed(self, detail):
+        clean = " ".join(str(detail or "翻译失败").replace("\r", " ").replace("\n", " ").split())[:1000]
+        self._translation_last_error = clean[:400]
+        path = os.path.join(core._app_dir(), "surface_translation_errors.log")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with self._translation_log_lock:
+            if os.path.isfile(path) and os.path.getsize(path) >= 1024 * 1024:
+                archived = path + ".previous"
+                if os.path.exists(archived):
+                    os.remove(archived)
+                os.replace(path, archived)
+            with open(path, "a", encoding="utf-8", newline="\n") as handle:
+                handle.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {clean}\n")
+
+    @staticmethod
+    def _existing_codex_debug_port():
+        """Return a live Codex CDP port, never an unverified stale marker."""
+        candidates = []
+        try:
+            with open(os.path.join(core._app_dir(), "codex_debug_port"), encoding="utf-8") as handle:
+                candidates.append(int(handle.read().strip()))
+        except (OSError, ValueError):
+            pass
+        candidates.append(CODEX_EXPERIMENT_PORT)
+        for port in dict.fromkeys(candidates):
+            if not 1024 <= port <= 65535:
+                continue
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=1) as response:
+                    if select_codex_page_target(json.load(response)):
+                        return port
+            except (OSError, ValueError, json.JSONDecodeError):
+                continue
+        return None
+
+    def resume_saved_surface_translation(self):
+        """Reattach an enabled overlay to an already-running Codex without restarting it."""
+        if not self._load_community_experiments()["surface_translation"]:
+            return
+        if not os.path.isfile(self._translation_settings_file()) or self._existing_codex_debug_port() is None:
+            return
+        result = self.apply_surface_translation(self._load_translation_settings(), restart=False)
+        if not result.get("ok"):
+            self._translation_failed(result.get("error", "翻译重连失败"))
+
+    def apply_surface_translation(self, data, restart=True):
+        if not self._load_community_experiments()["surface_translation"]:
+            return {"ok": False, "error": "请先勾选“允许工具箱显示中文翻译”"}
+        try:
+            settings = self._normalized_translation_settings(data)
+            translator = self._create_surface_translator(settings)
+            launcher = _resource_path("experiments", "codex_translation_launcher.ps1")
+            overlay = _resource_path("experiments", "codex_translation_overlay.js")
+            if not os.path.isfile(launcher) or not os.path.isfile(overlay):
+                return {"ok": False, "error": "翻译功能需要的文件不完整，请重新安装工具箱"}
+            port = settings["port"] if restart else (self._existing_codex_debug_port() or settings["port"])
+            command = [self._find_pwsh(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", launcher,
+                       "-Port", str(port)]
+            if settings["codex_launch_path"]:
+                command += ["-CodexExecutable", settings["codex_launch_path"]]
+            if restart:
+                command.append("-Restart")
+            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                    timeout=100, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+            detail = (result.stdout or "") + "\n" + (result.stderr or "")
+            if result.returncode:
+                return {"ok": False, "error": self._translation_launcher_error(detail)}
+            marker = next((line for line in detail.splitlines() if line.startswith("CODEX_TOOLBOX_TARGET=")), "")
+            if not marker:
+                return {"ok": False, "error": "Codex 已经打开，但工具箱暂时无法把中文显示到页面上"}
+            target_payload = json.loads(marker.split("=", 1)[1])
+            target = select_codex_page_target(target_payload)
+            websocket_url = target.get("webSocketDebuggerUrl") if target else ""
+            if not websocket_url:
+                return {"ok": False, "error": "工具箱没有连接上 Codex 页面，请关闭 Codex 后重新点击第一个启动按钮"}
+            with open(overlay, encoding="utf-8") as handle:
+                overlay_source = handle.read()
+            self.stop_surface_translation()
+            controller = SurfaceTranslationController(
+                websocket_url, overlay_source,
+                {"translateInterface": settings["translate_interface"],
+                 "translateMessages": settings["translate_messages"],
+                 "translateInput": settings["translate_input"]},
+                translator, self._translation_failed,
+            )
+            controller.start()
+            self._translation_controller = controller
+            self._translation_last_error = ""
+            self._save_translation_settings(settings)
+            return {"ok": True, "message": "右下角四个翻译控件已经显示。当前保持原文，点击“翻译页面”后才会调用 AI。"}
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": "等待 Codex 打开超时，请确认 Codex 能正常启动后再试"}
+        except Exception as error:
+            return {"ok": False, "error": str(error)}
+
+    def launch_codex_hub(self):
+        """Restart Codex once, then attach every enabled launch-time feature."""
+        features = self._load_community_experiments()
+        appearance_enabled = bool(features.get("local_appearance"))
+        translation_enabled = bool(features.get("surface_translation"))
+        background_settings = self._load_background_settings()
+        translation_settings = self._load_translation_settings()
+
+        if appearance_enabled:
+            try:
+                background_settings = self._normalized_background_settings(background_settings)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "已启用背景功能，但保存的外观参数无效。请先到“实验外观”重新保存。"}
+            media_error = self._validate_background_media(background_settings)
+            if media_error:
+                return {"ok": False, "error": "已启用背景功能：" + media_error}
+        try:
+            translator = None
+            if translation_enabled:
+                translation_settings = self._normalized_translation_settings(translation_settings)
+                translator = self._create_surface_translator(translation_settings)
+        except Exception as error:
+            return {"ok": False, "error": "已启用翻译功能：" + str(error)}
+
+        launch_paths = {
+            path for path in (
+                background_settings.get("codex_launch_path", "") if appearance_enabled else "",
+                translation_settings.get("codex_launch_path", "") if translation_enabled else "",
+            ) if path
+        }
+        if len(launch_paths) > 1:
+            return {"ok": False, "error": "背景和翻译保存了不同的 Codex 程序路径，请统一后再从首页启动。"}
+        launch_path = next(iter(launch_paths), "")
+        try:
+            launcher = _resource_path("experiments", "codex_translation_launcher.ps1")
+            command = [self._find_pwsh(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", launcher,
+                       "-Port", str(CODEX_EXPERIMENT_PORT), "-Restart"]
+            if launch_path:
+                command += ["-CodexExecutable", launch_path]
+            result = subprocess.run(
+                command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=100, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+            detail = (result.stdout or "") + "\n" + (result.stderr or "")
+            if result.returncode:
+                return {"ok": False, "error": self._translation_launcher_error(detail)}
+            marker = next((line for line in detail.splitlines() if line.startswith("CODEX_TOOLBOX_TARGET=")), "")
+            if not marker:
+                return {"ok": False, "error": "Codex 已启动，但工具箱没有找到主页面。"}
+            target_payload = json.loads(marker.split("=", 1)[1])
+            target = select_codex_page_target(target_payload)
+            if not target or not target.get("webSocketDebuggerUrl"):
+                return {"ok": False, "error": "Codex 已启动，但本机调试页面尚未就绪。"}
+
+            enabled = []
+            if appearance_enabled:
+                applied = self.apply_background(background_settings, restart=False)
+                if not applied.get("ok"):
+                    return {"ok": False, "error": "Codex 已启动，但背景应用失败：" + applied.get("error", "未知错误")}
+                enabled.append("背景")
+            if translation_enabled:
+                with open(_resource_path("experiments", "codex_translation_overlay.js"), encoding="utf-8") as handle:
+                    overlay_source = handle.read()
+                self.stop_surface_translation()
+                controller = SurfaceTranslationController(
+                    target["webSocketDebuggerUrl"], overlay_source,
+                    {"translateInterface": translation_settings["translate_interface"],
+                     "translateMessages": translation_settings["translate_messages"],
+                     "translateInput": translation_settings["translate_input"]},
+                    translator, self._translation_failed,
+                )
+                controller.start()
+                self._translation_controller = controller
+                self._translation_last_error = ""
+                enabled.append("翻译")
+            else:
+                self.stop_surface_translation()
+            feature_text = "、".join(enabled) if enabled else "基础模式"
+            return {"ok": True, "message": f"Codex 已启动；已加载：{feature_text}。"}
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": "等待 Codex 启动超时，请确认 Codex 能正常打开后重试。"}
+        except Exception as error:
+            return {"ok": False, "error": str(error)}
+
+    def stop_surface_translation(self):
+        controller = self._translation_controller
+        self._translation_controller = None
+        if controller:
+            controller.stop()
+        return {"ok": True, "message": "翻译已经关闭，现在显示的是 Codex 原来的英文界面。"}
+
     # ---------- 状态 ----------
     def get_models(self, base_url, api_key):
         """从 OpenAI 兼容 API 的 /models 拉取真实模型列表"""
@@ -444,11 +813,12 @@ class Api:
             return {"ok": False, "error": "Base URL 无效"}
         req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"})
         try:
-            resp = urllib.request.urlopen(req, timeout=15)
-            data = json.loads(resp.read().decode("utf-8"))
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
             models = [
-                {"id": item.get("id"), "created": item.get("created")}
-                for item in data.get("data", []) if isinstance(item, dict) and item.get("id")
+                {"id": item["id"][:256], "created": item.get("created")}
+                for item in data.get("data", [])
+                if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"].strip()
             ]
             # 过滤非对话模型（语音/图像/视频/嵌入等）
             skip = ("tts", "asr", "image", "video", "embedding", "speech",
@@ -485,7 +855,7 @@ class Api:
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
-                "User-Agent": "CodexToolbox/0.1.1-beta",
+                "User-Agent": f"CodexToolbox/{__version__}",
             },
         )
         try:
@@ -538,12 +908,14 @@ class Api:
     def get_status(self):
         prov = core.read_provider()
         names = {p["id"]: p["name"] for p in core.load_providers()}
+        process_state = core.codex_process_state()
         return {
             "provider": prov,
             "provider_name": names.get(prov, prov),
             "model": core.read_model(),
             "reasoning_effort": core.read_reasoning_effort(),
-            "codex_running": core.codex_running(),
+            "codex_running": process_state["state"] != "stopped",
+            "process_state": process_state,
             "proxy_running": self.proxy_server is not None,
             "proxy_url": self.proxy_url,
             "migrated_dashscope": self.migrated_dashscope,
@@ -553,21 +925,54 @@ class Api:
         """仅返回本机状态摘要，不返回 API Key、会话内容或数据库记录。"""
         data_dir = core._app_dir()
         try:
-            backup_count = len([
-                item for item in os.listdir(core.BAK_DIR)
-                if os.path.isdir(os.path.join(core.BAK_DIR, item))
-            ]) if os.path.isdir(core.BAK_DIR) else 0
+            backups = core.backup_inventory()
         except OSError:
-            backup_count = 0
+            backups = {"count": 0, "bytes": 0}
+        process_state = core.codex_process_state()
+        legacy_artifacts = self._legacy_artifacts()
         return {
             "data_dir": data_dir,
             "backup_dir": core.BAK_DIR,
             "provider_count": len(core.load_providers()),
             "route_count": len(core.load_thread_routes()),
-            "backup_count": backup_count,
-            "codex_running": core.codex_running(),
+            "backup_count": backups["count"],
+            "backup_bytes": backups["bytes"],
+            "backup_policy": f"{core.BACKUP_MAX_AGE_DAYS} 天 / {core.BACKUP_MAX_ENTRIES} 项 / {core.BACKUP_MAX_BYTES // (1024 * 1024)} MB",
+            "codex_running": process_state["state"] != "stopped",
+            "process_state": process_state,
+            "legacy_artifact_count": len(legacy_artifacts),
             "community_experiments": self._load_community_experiments(),
             "appearance_saved": os.path.isfile(self._background_settings_file()),
+        }
+
+    @staticmethod
+    def _legacy_artifacts():
+        skin_dir = os.path.join(core._app_dir(), "skin")
+        candidates = [os.path.join(skin_dir, "install_codex_skin.ps1"), os.path.join(skin_dir, "skin.log")]
+        candidates.extend(glob.glob(os.path.join(skin_dir, "app.asar.bak_*")))
+        return [path for path in candidates if os.path.isfile(path)]
+
+    def quarantine_legacy_artifacts(self):
+        """Move obsolete app.asar patching files to a recoverable quarantine directory."""
+        artifacts = self._legacy_artifacts()
+        if not artifacts:
+            return {"ok": True, "count": 0, "message": "没有发现旧版改包文件。"}
+        destination = os.path.join(core._app_dir(), "legacy_quarantine", time.strftime("%Y%m%d_%H%M%S"))
+        os.makedirs(destination, exist_ok=False)
+        moved = []
+        try:
+            for source in artifacts:
+                target = os.path.join(destination, os.path.basename(source))
+                shutil.move(source, target)
+                moved.append((source, target))
+        except Exception as error:
+            for source, target in reversed(moved):
+                if os.path.isfile(target) and not os.path.exists(source):
+                    shutil.move(target, source)
+            return {"ok": False, "error": f"隔离失败，已回滚：{str(error)[:160]}"}
+        return {
+            "ok": True, "count": len(moved), "quarantine_dir": destination,
+            "message": f"已隔离 {len(moved)} 个旧版文件；需要时可从隔离目录恢复。",
         }
 
     # ---------- 供应商 ----------
@@ -611,6 +1016,7 @@ class Api:
         if data.get("proxy"):
             p["proxy"] = True
             p["upstream_base"] = data.get("upstream_base", "https://api.deepseek.com/v1")
+            p["proxy_token"] = old.get("proxy_token") or secrets.token_urlsafe(32)
         p = core.normalize_provider(p)
         if p["kind"] == "official":
             p["base_url"] = ""
@@ -642,7 +1048,19 @@ class Api:
                 "ok": False,
                 "error": "不能删除当前全局供应商。请先切换到其他 API 或官方登录，再删除。",
             }
+        dependencies = core.provider_dependencies(pid)
+        if dependencies["unknown"]:
+            return {"ok": False, "error": "无法确认会话依赖关系，已取消删除以避免损坏路由。"}
+        affected = sorted(set(dependencies["route_ids"] + dependencies["state_ids"]))
+        if affected:
+            return {
+                "ok": False,
+                "error": f"仍有 {len(affected)} 个会话使用该供应商。请先把这些会话切换到其他通道。",
+                "dependency_count": len(affected),
+            }
         provs = core.load_providers()
+        if not any(p.get("id") == pid for p in provs):
+            return {"ok": False, "error": "供应商不存在"}
         provs = [p for p in provs if p["id"] != pid]
         core.save_providers(provs)
         return {"ok": True}
@@ -738,7 +1156,7 @@ class Api:
             return {"ok": False, "error": "Base URL 无效"}
         req = urllib.request.Request(
             base.rstrip("/") + "/models",
-            headers={"Authorization": f"Bearer {p.get('api_key', '')}", "User-Agent": "CodexToolbox/0.1.1-beta"},
+            headers={"Authorization": f"Bearer {p.get('api_key', '')}", "User-Agent": f"CodexToolbox/{__version__}"},
         )
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
@@ -771,14 +1189,22 @@ class Api:
         import socket
         import subprocess
         import urllib.request
-        import hashlib
         import time
         upstream = p.get("upstream_base") or "https://api.deepseek.com/v1"
         key = p.get("api_key") or ""
         model = p.get("model") or "deepseek-chat"
         provider_id = p.get("id") or ""
-        key_hash = hashlib.sha256(key.encode()).hexdigest()[:12]
+        proxy_token = p.get("proxy_token") or ""
+        if not proxy_token:
+            raise RuntimeError("本地代理令牌缺失，请重新保存该供应商配置。")
+        import codex_proxy
+        expected_fingerprint = codex_proxy.config_fingerprint(upstream, key, model, provider_id)
         selected_port = core.PROXY_PORT
+
+        def read_status(url, timeout):
+            request = urllib.request.Request(url, headers={"Authorization": f"Bearer {proxy_token}"})
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
 
         # 端口是否空闲
         s = socket.socket()
@@ -793,12 +1219,12 @@ class Api:
             # 已有代理：查 /status 对比配置
             same = False
             try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{core.PROXY_PORT}/status", timeout=3) as r:
-                    st = json.loads(r.read().decode("utf-8"))
+                st = read_status(f"http://127.0.0.1:{core.PROXY_PORT}/status", 3)
                 same = (st.get("service") == "codex-toolbox-proxy"
-                        and st.get("upstream") == upstream and st.get("model") == model
+                        and st.get("auth_required") is True and st.get("model") == model
                         and st.get("provider_id") == provider_id
-                        and st.get("key_hash") == key_hash)
+                        and st.get("version") == codex_proxy.VERSION
+                        and st.get("config_fingerprint") == expected_fingerprint)
             except Exception:
                 same = False
             if same:
@@ -828,9 +1254,10 @@ class Api:
                 last_error = f"代理进程已退出（代码 {self.proxy_process.returncode}）"
                 break
             try:
-                with urllib.request.urlopen(status_url, timeout=0.5) as response:
-                    status = json.loads(response.read().decode("utf-8"))
-                if status.get("service") == "codex-toolbox-proxy":
+                status = read_status(status_url, 0.5)
+                if (status.get("service") == "codex-toolbox-proxy"
+                        and status.get("auth_required") is True
+                        and status.get("config_fingerprint") == expected_fingerprint):
                     self.proxy_server = object()
                     return self.proxy_url
             except Exception as exc:
@@ -889,7 +1316,7 @@ class Api:
                 "expected_model": expected_model,
                 "model_mismatch": mismatch,
                 "route_mode": mode,
-                "route_label": {"follow": "已同步默认", "fixed": "固定通道", "same": "与默认一致"}[mode],
+                "route_label": {"follow": "上次手动同步", "fixed": "固定通道", "same": "与默认一致"}[mode],
             })
         return out
 
@@ -928,8 +1355,9 @@ class Api:
     ):
         if not self._load_community_experiments()["session_routing"]:
             return {"ok": False, "error": "请先在“会话路由实验”中确认并启用此非官方功能"}
-        if core.codex_running():
-            return {"ok": False, "error": "请先完全退出 Codex（含托盘）"}
+        block_reason = self._mutation_block_reason()
+        if block_reason:
+            return {"ok": False, "error": block_reason}
         provider = next((item for item in core.load_providers() if item.get("id") == pid), None)
         if not provider:
             return {"ok": False, "error": "供应商不存在"}
@@ -968,8 +1396,9 @@ class Api:
             return {"ok": False, "error": "请先选择会话"}
         if not self._load_community_experiments()["session_routing"]:
             return {"ok": False, "error": "请先在“会话路由实验”中确认并启用此非官方功能"}
-        if core.codex_running():
-            return {"ok": False, "error": "请先完全退出 Codex（含托盘）"}
+        block_reason = self._mutation_block_reason()
+        if block_reason:
+            return {"ok": False, "error": block_reason}
         # 不允许同一时间启动多个批量操作，避免相互覆盖备份或路由状态。
         with self.route_operations_lock:
             for operation in self.route_operations.values():
@@ -1011,8 +1440,9 @@ class Api:
             operation["message"] = "正在请求 Codex 保存通道，并确认落盘状态"
         try:
             # 在后台线程真正开始前再次检查，防止用户在确认后重新打开 Codex。
-            if core.codex_running():
-                result = {"ok": False, "error": "Codex 已重新运行，请先完全退出 Codex 后再操作。"}
+            block_reason = self._mutation_block_reason()
+            if block_reason:
+                result = {"ok": False, "error": block_reason}
             elif mode == "fixed":
                 # 保持旧调用签名兼容；核心函数仍支持维护者传入进度回调。
                 result = self.switch_sessions(tids, pid, model_override, effort_override)
@@ -1067,8 +1497,9 @@ class Api:
     def follow_sessions(self, tids, progress_callback=None):
         if not self._load_community_experiments()["session_routing"]:
             return {"ok": False, "error": "请先在“会话路由实验”中确认并启用此非官方功能"}
-        if core.codex_running():
-            return {"ok": False, "error": "请先完全退出 Codex（含托盘）"}
+        block_reason = self._mutation_block_reason()
+        if block_reason:
+            return {"ok": False, "error": block_reason}
         pid = core.read_provider()
         provider = next((item for item in core.load_providers() if item.get("id") == pid), None)
         if not provider:
@@ -1091,8 +1522,9 @@ class Api:
         return {"ok": True, "count": len(tids), "backup": stamp, "provider": pid}
 
     def archive_sessions(self, tids):
-        if core.codex_running():
-            return {"ok": False, "error": "请先完全退出 Codex（含托盘）"}
+        block_reason = self._mutation_block_reason()
+        if block_reason:
+            return {"ok": False, "error": block_reason}
         try:
             stamp = core.archive_threads(tids)
         except Exception as e:
@@ -1111,8 +1543,9 @@ class Api:
         } for tid, title, provider, model, effort in core.list_archived()]
 
     def unarchive_sessions(self, tids):
-        if core.codex_running():
-            return {"ok": False, "error": "请先完全退出 Codex（含托盘）"}
+        block_reason = self._mutation_block_reason()
+        if block_reason:
+            return {"ok": False, "error": block_reason}
         try:
             stamp = core.unarchive_threads(tids)
         except Exception as e:
@@ -1120,8 +1553,9 @@ class Api:
         return {"ok": True, "count": len(tids), "backup": stamp}
 
     def repair_archived_session_index(self):
-        if core.codex_running():
-            return {"ok": False, "error": "请先完全退出 Codex（含托盘）"}
+        block_reason = self._mutation_block_reason()
+        if block_reason:
+            return {"ok": False, "error": block_reason}
         try:
             stamp, count, catalog_count, backup = core.repair_archived_session_index()
         except Exception as e:
@@ -1169,17 +1603,44 @@ def _acquire_single_instance():
 
 
 def main():
+    if len(sys.argv) >= 2 and sys.argv[1] == "--auth-secret":
+        raise SystemExit(secret_store.main(sys.argv[2:]))
+
+    if "--self-test" in sys.argv:
+        index = sys.argv.index("--self-test")
+        output_path = sys.argv[index + 1] if len(sys.argv) > index + 1 else ""
+        html = _load_ui()
+        checks = {
+            "version": __version__,
+            "ui_loaded": "Codex 工具箱" in html,
+            "safe_model_rendering": "chip.textContent = String(model)" in html and "m.replace(/\"/g" not in html,
+            "non_overlapping_refresh": "sessionRefreshInFlight" in html and "setInterval(loadSessions" not in html,
+            "proxy_auth": hasattr(secret_store, "read_provider_proxy_secret"),
+        }
+        checks["ok"] = all(value for key, value in checks.items() if key != "version")
+        payload = json.dumps(checks, ensure_ascii=False, indent=2)
+        if output_path:
+            with open(output_path, "w", encoding="utf-8") as handle:
+                handle.write(payload)
+        else:
+            print(payload)
+        if not checks["ok"]:
+            raise SystemExit(1)
+        return
+
     # 代理独立进程模式：命令行只传供应商 ID，不传明文密钥。
     if "--proxy" in sys.argv:
         i = sys.argv.index("--proxy")
         args = sys.argv[i + 1:i + 5]
         if len(args) >= 4:
             import codex_proxy
-            import secret_store
             import time
             upstream, model, port_text, provider_id = args
             key = secret_store.read_provider_secret(provider_id)
-            codex_proxy.start_proxy(upstream, key, model, int(port_text), provider_id=provider_id)
+            proxy_token = secret_store.read_provider_proxy_secret(provider_id)
+            codex_proxy.start_proxy(
+                upstream, key, model, int(port_text), provider_id=provider_id, proxy_token=proxy_token,
+            )
             while True:
                 time.sleep(10)
         return
@@ -1188,7 +1649,15 @@ def main():
     if not _acquire_single_instance():
         return
 
+    auth_migration_error = ""
+    if os.path.isfile(core.CONFIG):
+        try:
+            core.migrate_legacy_auth_commands()
+            core.remove_unused_legacy_auth_helpers()
+        except Exception as exc:
+            auth_migration_error = str(exc)[:300]
     api = Api()
+    api._auth_migration_error = auth_migration_error
     html = _load_ui()
     window = webview.create_window(
         "Codex 工具箱",
@@ -1200,6 +1669,7 @@ def main():
         background_color="#0e1116",
     )
     api.set_window(window)
+    threading.Thread(target=api.resume_saved_surface_translation, name="codex-translation-resume", daemon=True).start()
 
     # ---- 托盘：关闭窗口 → 隐藏到后台，托盘驻留 ----
     tray = None
@@ -1211,6 +1681,7 @@ def main():
 
     def tray_quit():
         exiting["flag"] = True
+        api.stop_surface_translation()
         api.stop_proxy()
         api.stop_background_media()
         if tray:
@@ -1253,6 +1724,7 @@ def main():
 
     window.events.closing += on_closing
     def stop_local_services():
+        api.stop_surface_translation()
         api.stop_proxy()
         api.stop_background_media()
 

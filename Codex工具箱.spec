@@ -2,7 +2,7 @@
 from PyInstaller.utils.hooks import collect_submodules
 
 # 公开版采用 PyWebView；旧版 Tk 界面不在启动链和发布包中。
-hiddenimports = collect_submodules("webview") + collect_submodules("pystray")
+hiddenimports = collect_submodules("webview") + collect_submodules("pystray") + ["websocket"]
 
 a = Analysis(
     ["codex_app.py"],
@@ -12,6 +12,9 @@ a = Analysis(
         ("ui.html", "."),
         ("assets/codex_toolbox.ico", "."),
         ("experiments/codex_background_injector.ps1", "experiments"),
+        ("experiments/codex_package_activation.ps1", "experiments"),
+        ("experiments/codex_translation_launcher.ps1", "experiments"),
+        ("experiments/codex_translation_overlay.js", "experiments"),
     ],
     hiddenimports=hiddenimports,
     hookspath=[],
@@ -34,4 +37,5 @@ exe = EXE(
     upx=True,
     console=False,
     icon="assets/codex_toolbox.ico",
+    version="version_info.txt",
 )

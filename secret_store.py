@@ -118,18 +118,59 @@ def read_provider_secret(provider_id: str, path: str | None = None) -> str:
     raise RuntimeError(f"找不到供应商 {provider_id}")
 
 
+def read_provider_proxy_secret(provider_id: str, path: str | None = None) -> str:
+    """Read the per-provider capability token used only by the loopback proxy."""
+    target = path or providers_path()
+    with open(target, encoding="utf-8") as handle:
+        data = json.load(handle)
+    for provider in data.get("providers", []):
+        if provider.get("id") != provider_id:
+            continue
+        encrypted = provider.get("proxy_token_dpapi", "")
+        if not encrypted:
+            raise RuntimeError(f"供应商 {provider_id} 没有本地代理令牌")
+        return unprotect_secret(encrypted)
+    raise RuntimeError(f"找不到供应商 {provider_id}")
+
+
+def write_auth_stdout(value: str) -> bool:
+    # 不追加换行，避免某些上游把换行视为令牌的一部分。窗口版 EXE 没有 Python sys.stdout，
+    # 但 Codex 启动命令认证时提供了标准输出管道，直接写入该 Windows 句柄即可。
+    if getattr(sys, "frozen", False) and os.name == "nt":
+        payload = value.encode("utf-8")
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.GetStdHandle.argtypes = [wintypes.DWORD]
+        kernel32.GetStdHandle.restype = wintypes.HANDLE
+        kernel32.WriteFile.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
+                                       ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+        kernel32.WriteFile.restype = wintypes.BOOL
+        handle = kernel32.GetStdHandle(0xFFFFFFF5)
+        if not handle or handle == ctypes.c_void_p(-1).value:
+            return False
+        buffer = ctypes.create_string_buffer(payload)
+        written = wintypes.DWORD()
+        if not kernel32.WriteFile(handle, buffer, len(payload), ctypes.byref(written), None) or written.value != len(payload):
+            return False
+    else:
+        sys.stdout.write(value)
+        sys.stdout.flush()
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if len(args) != 1 or not args[0].strip():
+    proxy_mode = len(args) == 2 and args[0] == "--proxy" and args[1].strip()
+    provider_mode = len(args) == 1 and args[0].strip()
+    if not (proxy_mode or provider_mode):
         return 2
     try:
-        secret = read_provider_secret(args[0].strip())
+        secret = (
+            read_provider_proxy_secret(args[1].strip())
+            if proxy_mode else read_provider_secret(args[0].strip())
+        )
     except Exception:
         return 1
-    # 不追加换行，避免某些上游把换行视为令牌的一部分。
-    sys.stdout.write(secret)
-    sys.stdout.flush()
-    return 0
+    return 0 if write_auth_stdout(secret) else 1
 
 
 if __name__ == "__main__":

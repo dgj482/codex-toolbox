@@ -9,6 +9,7 @@ import inspect
 from unittest import mock
 from pathlib import Path
 import sys
+import tomllib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -18,6 +19,57 @@ from codex_app import Api
 
 
 class ToolboxCoreTests(unittest.TestCase):
+    def test_unarchived_sessions_follow_live_codex_thread_list(self):
+        with tempfile.TemporaryDirectory() as td:
+            state = os.path.join(td, "state.sqlite")
+            connection = sqlite3.connect(state)
+            with connection:
+                connection.execute(
+                    "CREATE TABLE threads (id TEXT PRIMARY KEY, title TEXT, model_provider TEXT, "
+                    "model TEXT, reasoning_effort TEXT, archived INTEGER, created_at INTEGER)"
+                )
+                connection.executemany(
+                    "INSERT INTO threads VALUES (?, ?, ?, ?, ?, 0, ?)",
+                    [
+                        ("task-a", "stale A", "openai", "gpt-a", "medium", 1),
+                        ("task-b", "stale B", "qwen", "qwen-b", "high", 2),
+                        ("database-only", "not in sidebar", "openai", "gpt-x", "low", 3),
+                    ],
+                )
+            connection.close()
+
+            class FakeServer:
+                requests = []
+
+                def __init__(self, executable, timeout=20):
+                    self.executable = executable
+
+                def request(self, method, params):
+                    self.requests.append((method, dict(params)))
+                    if params.get("cursor") == "next-page":
+                        return {"data": [
+                            {"id": "task-a", "name": "Live A", "ephemeral": False},
+                            {"id": "temporary", "name": "Temporary", "ephemeral": True},
+                        ], "nextCursor": None}
+                    return {"data": [
+                        {"id": "task-b", "name": "Live B", "ephemeral": False},
+                    ], "nextCursor": "next-page"}
+
+                def close(self):
+                    pass
+
+            with mock.patch.object(core, "STATE_DB", state), \
+                 mock.patch.object(core, "_find_codex_executable", return_value="codex.exe"), \
+                 mock.patch.object(core, "_CodexAppServer", FakeServer), \
+                 mock.patch.dict(core._thread_list_cache, {"expires": 0.0, "items": None}, clear=True):
+                rows, titles = core.list_unarchived()
+
+            self.assertEqual([row[0] for row in rows], ["task-b", "task-a"])
+            self.assertEqual(titles, {"task-b": "Live B", "task-a": "Live A"})
+            self.assertEqual(rows[0][2:5], ("qwen", "qwen-b", "high"))
+            self.assertEqual(FakeServer.requests[0][0], "thread/list")
+            self.assertEqual(FakeServer.requests[0][1]["sortKey"], "recency_at")
+
     def test_runtime_tray_icon_uses_canonical_asset(self):
         from codex_app import _toolbox_icon_path
 
@@ -116,6 +168,24 @@ class ToolboxCoreTests(unittest.TestCase):
         self.assertIn("当前全局供应商", result["error"])
         save.assert_not_called()
 
+    def test_delete_provider_is_blocked_when_sessions_still_reference_it(self):
+        providers = [{"id": "openai"}, {"id": "custom"}]
+        dependencies = {"route_ids": ["thread-a"], "state_ids": ["thread-b"], "unknown": False}
+        with mock.patch.object(core, "read_provider", return_value="openai"), \
+             mock.patch.object(core, "load_providers", return_value=providers), \
+             mock.patch.object(core, "provider_dependencies", return_value=dependencies), \
+             mock.patch.object(core, "save_providers") as save:
+            result = Api().delete_provider("custom")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["dependency_count"], 2)
+        save.assert_not_called()
+
+    def test_model_chips_are_rendered_as_text_not_inner_html(self):
+        source = (Path(__file__).resolve().parents[1] / "ui.html").read_text(encoding="utf-8")
+        self.assertIn("chip.textContent = String(model)", source)
+        self.assertNotIn("m.replace(/\"/g,'&quot;')", source)
+        self.assertNotIn("setInterval(loadSessions", source)
+
     def test_proxy_rejects_unsupported_tools_and_media(self):
         with self.assertRaisesRegex(codex_proxy.UnsupportedCapabilityError, "web_search"):
             codex_proxy.responses_to_chat({
@@ -162,8 +232,8 @@ class ToolboxCoreTests(unittest.TestCase):
         with mock.patch("codex_app.shutil.which", side_effect=lambda name: "C:/pwsh/pwsh.exe" if name == "pwsh.exe" else None):
             self.assertEqual(Api._find_pwsh(), "C:/pwsh/pwsh.exe")
 
-    def test_api_startup_does_not_automatically_migrate_user_config(self):
-        """公开版启动只读本地状态，不能悄悄重写 Codex 配置。"""
+    def test_api_constructor_does_not_migrate_provider_settings(self):
+        """API 构造不迁移供应商；单文件升级仅迁移旧认证命令。"""
         with mock.patch.object(core, "migrate_active_dashscope") as migrate:
             api = Api()
         migrate.assert_not_called()
@@ -667,7 +737,7 @@ class ToolboxCoreTests(unittest.TestCase):
     def test_session_route_unsupported_is_a_notice_not_a_failure(self):
         api = object.__new__(Api)
         provider = {"id": "qwen", "name": "千问", "model": "qwen-test", "proxy": False}
-        with mock.patch.object(core, "codex_running", return_value=False), \
+        with mock.patch.object(Api, "_mutation_block_reason", return_value=""), \
              mock.patch.object(core, "load_providers", return_value=[provider]), \
              mock.patch.object(Api, "_load_community_experiments", return_value={"local_appearance": False, "session_routing": True}), \
              mock.patch.object(core, "ensure_provider_config"), \
@@ -697,7 +767,7 @@ class ToolboxCoreTests(unittest.TestCase):
         with mock.patch.object(
             Api, "_load_community_experiments",
             return_value={"local_appearance": False, "session_routing": True},
-        ), mock.patch.object(core, "codex_running", return_value=False), mock.patch.object(
+        ), mock.patch.object(Api, "_mutation_block_reason", return_value=""), mock.patch.object(
             api, "switch_sessions", return_value={"ok": True, "count": 1, "backup": "backup-1"}
         ) as switch:
             submitted = api.start_route_operation(["thread-a"], "qwen", "fixed")
@@ -721,7 +791,7 @@ class ToolboxCoreTests(unittest.TestCase):
         with mock.patch.object(
             Api, "_load_community_experiments",
             return_value={"local_appearance": False, "session_routing": True},
-        ), mock.patch.object(core, "codex_running", return_value=False):
+        ), mock.patch.object(Api, "_mutation_block_reason", return_value=""):
             result = api.start_route_operation(["thread-a"], "qwen", "fixed")
         self.assertFalse(result["ok"])
         self.assertIn("已有会话路由操作", result["error"])
@@ -1115,6 +1185,7 @@ class ToolboxCoreTests(unittest.TestCase):
             with mock.patch.object(core, "STATE_DB", state), \
                  mock.patch.object(core, "CATALOG_DB", catalog), \
                  mock.patch.object(core, "BAK_DIR", backup), \
+                 mock.patch.object(core, "SESSION_INDEX_FILE", os.path.join(td, "session_index.jsonl")), \
                  mock.patch.object(core, "_find_codex_executable", return_value="codex.exe"), \
                  mock.patch.object(core, "_CodexAppServer", NonCascadingArchiveServer):
                 with self.assertRaisesRegex(RuntimeError, "thread-child"):
@@ -1140,13 +1211,79 @@ class ToolboxCoreTests(unittest.TestCase):
             "base_url": "https://example.test/v1", "api_key": "dummy-token",
             "model": "qwen-test", "wire_api": "responses",
         }
-        with mock.patch.object(core, "_auth_helper_command", return_value=("helper.exe", [])):
+        with mock.patch.object(core, "_auth_helper_command", return_value=("toolbox.exe", ["--auth-secret"])):
             block = core._provider_block("qwen", provider)
         self.assertIn("[model_providers.qwen.auth]", block)
-        self.assertIn('command = "helper.exe"', block)
-        self.assertIn('args = ["qwen"]', block)
+        self.assertIn('command = "toolbox.exe"', block)
+        self.assertIn('args = ["--auth-secret", "qwen"]', block)
+        self.assertIn("timeout_ms = 15000", block)
+
+    def test_proxy_provider_uses_separate_local_capability_token(self):
+        provider = {
+            "id": "relay", "name": "Relay", "kind": "relay", "proxy": True,
+            "base_url": "http://127.0.0.1:18732/v1", "api_key": "upstream-secret",
+            "proxy_token": "local-capability", "model": "test", "wire_api": "responses",
+        }
+        with mock.patch.object(core, "_auth_helper_command", return_value=("toolbox.exe", ["--auth-secret"])):
+            block = core._provider_block("relay", provider)
+        self.assertIn('args = ["--auth-secret", "--proxy", "relay"]', block)
+        self.assertNotIn("upstream-secret", "\n".join(block))
+        self.assertNotIn("local-capability", "\n".join(block))
+
+    def test_provider_block_preserves_openai_auth_requirement(self):
+        provider = {
+            "id": "relay", "name": "myrelay", "kind": "relay",
+            "base_url": "https://example.test/v1", "api_key": "dummy-token",
+            "model": "test-model", "wire_api": "responses",
+            "requires_openai_auth": True,
+        }
+        with mock.patch.object(core, "_auth_helper_command", return_value=("toolbox.exe", ["--auth-secret"])):
+            block = core._provider_block("relay", provider)
+        self.assertIn("requires_openai_auth = true", block)
         self.assertNotIn("dummy-token", block)
         self.assertNotIn("experimental_bearer_token", block)
+
+    def test_frozen_auth_uses_the_main_executable(self):
+        with mock.patch.object(core.sys, "frozen", True, create=True), \
+             mock.patch.object(core.sys, "executable", r"C:\test\Codex工具箱.exe"):
+            self.assertEqual(core._auth_helper_command(), (r"C:\test\Codex工具箱.exe", ["--auth-secret"]))
+
+    def test_migrate_owned_auth_commands_and_remove_legacy_helpers(self):
+        with tempfile.TemporaryDirectory() as td:
+            app_dir = Path(td)
+            config = app_dir / "config.toml"
+            backup_dir = app_dir / "backups"
+            main_exe = app_dir / "Codex工具箱.exe"
+            sibling = app_dir / core.LEGACY_AUTH_HELPER_NAME
+            installed = app_dir / "bin" / core.LEGACY_AUTH_HELPER_NAME
+            installed.parent.mkdir()
+            sibling.write_bytes(b"old")
+            installed.write_bytes(b"old")
+            content = (f'model_provider = "relay"\n\n'
+                       f'[model_providers.relay]\nmodel = "x"\n\n'
+                       f'[model_providers.relay.auth]\n'
+                       f'command = {core._toml_string(str(installed))}\n'
+                       f'args = ["relay"]\ntimeout_ms = 5000\n\n'
+                       f'[model_providers.other.auth]\n'
+                       f'command = "custom-auth.exe"\nargs = ["other"]\n')
+            config.write_text(content, encoding="utf-8")
+            with mock.patch.object(core, "CONFIG", str(config)), \
+                 mock.patch.object(core, "BAK_DIR", str(backup_dir)), \
+                 mock.patch.object(core, "_app_dir", return_value=td), \
+                 mock.patch.object(core, "prune_backups"), \
+                 mock.patch.object(core.sys, "frozen", True, create=True), \
+                 mock.patch.object(core.sys, "executable", str(main_exe)):
+                self.assertTrue(core.migrate_legacy_auth_commands())
+                self.assertFalse(core.migrate_legacy_auth_commands())
+                parsed = tomllib.loads(config.read_text(encoding="utf-8"))
+                self.assertEqual(parsed["model_providers"]["relay"]["auth"]["command"], str(main_exe))
+                self.assertEqual(parsed["model_providers"]["relay"]["auth"]["args"], ["--auth-secret", "relay"])
+                self.assertEqual(parsed["model_providers"]["relay"]["auth"]["timeout_ms"], 15000)
+                self.assertEqual(parsed["model_providers"]["other"]["auth"]["command"], "custom-auth.exe")
+                self.assertEqual(len(list(backup_dir.glob("config.toml.bak_*"))), 1)
+                core.remove_unused_legacy_auth_helpers()
+            self.assertFalse(sibling.exists())
+            self.assertFalse(installed.exists())
 
     def test_provider_file_contains_only_dpapi_ciphertext(self):
         with tempfile.TemporaryDirectory() as td, \
@@ -1154,15 +1291,34 @@ class ToolboxCoreTests(unittest.TestCase):
             providers = [{
                 "id": "relay", "name": "Relay", "kind": "relay",
                 "base_url": "https://example.test/v1", "api_key": "dummy-token",
-                "model": "model-test",
+                "model": "model-test", "proxy": True, "proxy_token": "local-capability",
             }]
             core.save_providers(providers)
             raw = Path(core.PROVIDERS_FILE).read_text(encoding="utf-8")
             self.assertNotIn("dummy-token", raw)
+            self.assertNotIn("local-capability", raw)
             self.assertIn("api_key_dpapi", raw)
+            self.assertIn("proxy_token_dpapi", raw)
             loaded = core.load_providers()
             relay = next(p for p in loaded if p["id"] == "relay")
             self.assertEqual(relay["api_key"], "dummy-token")
+            self.assertEqual(relay["proxy_token"], "local-capability")
+
+    def test_backup_pruning_preserves_newest_per_category_and_enforces_age(self):
+        with tempfile.TemporaryDirectory() as td, \
+             mock.patch.object(core, "BAK_DIR", td), \
+             mock.patch.object(core, "BACKUP_MAX_AGE_DAYS", 30):
+            old = 1_700_000_000
+            for name in ("archive_old", "archive_new", "unarchive_only"):
+                path = os.path.join(td, name)
+                os.makedirs(path)
+                Path(path, "data.bin").write_bytes(b"x")
+                os.utime(path, (old, old + (100 if name == "archive_new" else 0)))
+            result = core.prune_backups(now=old + 31 * 86400)
+            self.assertFalse(os.path.exists(os.path.join(td, "archive_old")))
+            self.assertTrue(os.path.isdir(os.path.join(td, "archive_new")))
+            self.assertTrue(os.path.isdir(os.path.join(td, "unarchive_only")))
+            self.assertEqual(result["removed"], 1)
 
     def test_archive_uses_official_app_server_and_normalizes_path(self):
         with tempfile.TemporaryDirectory() as td:
@@ -1300,6 +1456,7 @@ class ToolboxCoreTests(unittest.TestCase):
             with mock.patch.object(core, "STATE_DB", state), \
                  mock.patch.object(core, "CATALOG_DB", catalog), \
                  mock.patch.object(core, "BAK_DIR", backup), \
+                 mock.patch.object(core, "SESSION_INDEX_FILE", os.path.join(td, "session_index.jsonl")), \
                  mock.patch.object(core, "_find_codex_executable", return_value="codex.exe"), \
                  mock.patch.object(core, "_CodexAppServer", FakeUnarchiveServer):
                 stamp = core.unarchive_threads(["thread-archive"])
@@ -1317,6 +1474,101 @@ class ToolboxCoreTests(unittest.TestCase):
             self.assertTrue(os.path.isfile(os.path.join(
                 backup, f"unarchive_{stamp}", "rollouts", os.path.basename(archived_path)
             )))
+
+    def test_feature_hub_defaults_keep_core_visible_and_experiments_off(self):
+        defaults = Api._community_experiment_defaults()
+        self.assertTrue(defaults["channel_switching"])
+        self.assertTrue(defaults["session_archive"])
+        self.assertTrue(defaults["diagnostics"])
+        self.assertFalse(defaults["session_routing"])
+        self.assertFalse(defaults["local_appearance"])
+        self.assertFalse(defaults["surface_translation"])
+
+    def test_disabling_translation_stops_overlay_and_preserves_settings(self):
+        with tempfile.TemporaryDirectory() as td:
+            settings_file = os.path.join(td, "community_experiments.json")
+            Path(settings_file).write_text(json.dumps({"surface_translation": True}), encoding="utf-8")
+            api = Api()
+            controller = mock.Mock()
+            api._translation_controller = controller
+            with mock.patch.object(api, "_community_experiments_file", return_value=settings_file):
+                result = api.set_community_experiment("surface_translation", False)
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["features"]["surface_translation"])
+            self.assertFalse(json.loads(Path(settings_file).read_text(encoding="utf-8"))["surface_translation"])
+            controller.stop.assert_called_once_with()
+            self.assertIsNone(api._translation_controller)
+
+    def test_disabling_appearance_keeps_switch_on_if_restore_fails(self):
+        with tempfile.TemporaryDirectory() as td:
+            settings_file = os.path.join(td, "community_experiments.json")
+            Path(settings_file).write_text(json.dumps({"local_appearance": True}), encoding="utf-8")
+            api = Api()
+            with mock.patch.object(api, "_community_experiments_file", return_value=settings_file), \
+                 mock.patch.object(api, "remove_background", return_value={"ok": False, "error": "unavailable"}) as remove:
+                result = api.set_community_experiment("local_appearance", False)
+            self.assertFalse(result["ok"])
+            self.assertTrue(json.loads(Path(settings_file).read_text(encoding="utf-8"))["local_appearance"])
+            remove.assert_called_once_with()
+
+    def test_manual_sync_label_does_not_imply_future_global_changes(self):
+        api = Api()
+        providers = [{"id": "old", "name": "Old", "model": "old-model"}]
+        with mock.patch.object(core, "list_unarchived", return_value=([("task", "Task", "old", "old-model", "medium")], {})), \
+             mock.patch.object(core, "load_providers", return_value=providers), \
+             mock.patch.object(core, "load_thread_routes", return_value={"task": {"mode": "follow", "provider": "old"}}), \
+             mock.patch.object(core, "read_provider", return_value="new"):
+            session = api.get_sessions()[0]
+        self.assertEqual(session["route_label"], "上次手动同步")
+        self.assertEqual(session["provider"], "old")
+
+    def test_feature_hub_launches_codex_once_then_attaches_enabled_features(self):
+        class Completed:
+            returncode = 0
+            stdout = 'CODEX_TOOLBOX_TARGET={"type":"page","url":"app://-/index.html","webSocketDebuggerUrl":"ws://main"}'
+            stderr = ""
+
+        with tempfile.TemporaryDirectory() as td:
+            image = os.path.join(td, "background.png")
+            overlay = os.path.join(td, "overlay.js")
+            launcher = os.path.join(td, "launcher.ps1")
+            Path(image).write_bytes(b"image")
+            Path(overlay).write_text("window.test=true", encoding="utf-8")
+            Path(launcher).write_text("# launcher", encoding="utf-8")
+            background = {"image_path": image}
+            translation = {
+                "provider_id": "translation", "model": "translator", "codex_launch_path": "",
+                "translate_interface": True, "translate_messages": True, "translate_input": True,
+            }
+            provider = {
+                "id": "translation", "base_url": "http://127.0.0.1:9999/v1",
+                "model": "translator", "wire_api": "responses",
+            }
+            controller = mock.Mock()
+            def resource(*parts):
+                return overlay if parts[-1].endswith(".js") else launcher
+            api = Api()
+            with mock.patch.object(api, "_load_community_experiments", return_value={
+                    "local_appearance": True, "surface_translation": True,
+                 }), \
+                 mock.patch.object(api, "_load_background_settings", return_value=background), \
+                 mock.patch.object(api, "_load_translation_settings", return_value=translation), \
+                 mock.patch.object(api, "apply_background", return_value={"ok": True}) as apply_background, \
+                 mock.patch.object(api, "_find_pwsh", return_value="pwsh.exe"), \
+                 mock.patch.object(core, "load_providers", return_value=[provider]), \
+                 mock.patch.object(core, "_app_dir", return_value=td), \
+                 mock.patch("codex_app._resource_path", side_effect=resource), \
+                 mock.patch("codex_app.SurfaceTranslationController", return_value=controller), \
+                 mock.patch("codex_app.subprocess.run", return_value=Completed()) as run:
+                result = api.launch_codex_hub()
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(run.call_count, 1)
+            self.assertIn("-Restart", run.call_args.args[0])
+            apply_background.assert_called_once()
+            self.assertFalse(apply_background.call_args.kwargs["restart"])
+            controller.start.assert_called_once_with()
+            self.assertIn("背景、翻译", result["message"])
 
 
 if __name__ == "__main__":

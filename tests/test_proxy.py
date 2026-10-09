@@ -4,6 +4,7 @@ import json
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib import error as urlerr
 from urllib import request as urlreq
 import sys
 from pathlib import Path
@@ -71,12 +72,12 @@ class MockChatHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
-def send_responses_request(port, body):
+def send_responses_request(port, body, token="proxy-test-token"):
     """模拟 Codex 向代理发 /v1/responses 请求"""
     req = urlreq.Request(
         f"http://127.0.0.1:{port}/v1/responses",
         data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
         method="POST",
     )
     resp = urlreq.urlopen(req, timeout=30)
@@ -93,11 +94,41 @@ def main():
 
     # 启动代理
     server, port = codex_proxy.start_proxy(
-        f"http://127.0.0.1:{mock_port}/v1", "dummy-token", "deepseek-chat", port=0
+        f"http://127.0.0.1:{mock_port}/v1", "dummy-token", "deepseek-chat", port=0,
+        provider_id="test", proxy_token="proxy-test-token",
     )
     print(f"[test] 代理: http://127.0.0.1:{port}/v1")
 
     time.sleep(0.5)
+
+    # 未认证的本机进程不能读取状态、模型或使用上游额度。
+    try:
+        urlreq.urlopen(f"http://127.0.0.1:{port}/status", timeout=5)
+        raise AssertionError("未认证状态请求不应成功")
+    except urlerr.HTTPError as error:
+        assert error.code == 401
+
+    unauthorized = urlreq.Request(
+        f"http://127.0.0.1:{port}/v1/responses",
+        data=b"{}",
+        headers={"Content-Type": "application/json", "Authorization": "Bearer wrong-token"},
+        method="POST",
+    )
+    try:
+        urlreq.urlopen(unauthorized, timeout=5)
+        raise AssertionError("错误令牌不应转发请求")
+    except urlerr.HTTPError as error:
+        assert error.code == 401
+
+    status_request = urlreq.Request(
+        f"http://127.0.0.1:{port}/status",
+        headers={"Authorization": "Bearer proxy-test-token"},
+    )
+    with urlreq.urlopen(status_request, timeout=5) as response:
+        status = json.load(response)
+    assert status["config_fingerprint"] == codex_proxy.config_fingerprint(
+        f"http://127.0.0.1:{mock_port}/v1", "dummy-token", "deepseek-chat", "test"
+    )
 
     # 测试1：纯文本
     print("\n========== 测试1：纯文本对话 ==========")

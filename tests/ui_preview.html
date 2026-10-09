@@ -17,7 +17,11 @@ const providers = [
 document.getElementById('preview').addEventListener('load', event => {
   const target = event.target.contentWindow;
   target.pywebview = {api:{
-    get_community_experiments: async()=>({session_routing:true,local_appearance:false}),
+    get_community_experiments: async()=>({channel_switching:true,session_routing:true,session_archive:true,local_appearance:false,surface_translation:true,diagnostics:true}),
+    set_community_experiment: async(feature,enabled)=>({ok:true,features:{channel_switching:true,session_routing:true,session_archive:true,local_appearance:feature==='local_appearance'?enabled:false,surface_translation:feature==='surface_translation'?enabled:true,diagnostics:true,[feature]:enabled}}),
+    launch_codex_hub: async()=>({ok:true,message:'Codex 已启动；已加载：翻译。'}),
+    save_background_settings: async()=>({ok:true,message:'背景设置已保存'}),
+    save_surface_translation_settings: async()=>({ok:true,message:'翻译设置已保存'}),
     get_presets: async()=>({presets:[]}),
     get_providers: async()=>providers,
     test_all_provider_connections: async()=>({ok:true,results:providers.map(p=>({id:p.id,name:p.name,ok:true,message:p.id==='openai'?'当前 Codex 登录状态':'HTTP 200：连接成功'}))}),
