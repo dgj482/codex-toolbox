@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <title>Codex 工具箱</title>
 <style>
 /* ==========================================================================
    Codex 工具箱 · 视觉系统
-   设计语言：Obsidian Glass（深色为默认，浅色为可选）
+   设计语言：浅色表面、蓝色强调与细腻层次
    全部配色、圆角、阴影、动效都走令牌，组件本身不写死颜色，
    因此深浅两套主题只是两组变量，不会互相打架。
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
-   1. 设计令牌 —— 深色（默认）
+   1. 基础令牌与深色备用配色
    -------------------------------------------------------------------------- */
 :root {
   color-scheme: dark;
@@ -99,7 +99,7 @@
 }
 
 /* --------------------------------------------------------------------------
-   2. 设计令牌 —— 浅色（可选）
+   2. 设计令牌 —— 浅色（默认）
    -------------------------------------------------------------------------- */
 [data-theme="light"] {
   color-scheme: light;
@@ -128,8 +128,8 @@
   --muted: #647082;
   --muted-2: #8b95a6;
 
-  --accent: #5665e6;
-  --accent-2: #8b5cf6;
+  --accent: #4263d6;
+  --accent-2: #6285e9;
   --green: #0f9d6b;
   --amber: #b0700f;
   --red: #d6453f;
@@ -145,19 +145,19 @@
   --aurora-3: rgba(15,157,107,.09);
   --grain: .022;
 
-  /* 首页英雄卡：浅色下保留 0.1.9 的深海军蓝高对比卡与白色主按钮 */
-  --hero-bg: linear-gradient(116deg, #1d2b4c 0%, #2d416c 56%, #324e7b 100%);
-  --hero-border: #344b78;
+  /* 首页保留浅色层次，主操作用蓝色形成视觉重点。 */
+  --hero-bg: linear-gradient(116deg, #ffffff 0%, #edf3ff 56%, #e1ecff 100%);
+  --hero-border: #ccd9ef;
   --hero-glow:
-    radial-gradient(circle at 81% 22%, rgba(174,200,255,.22), transparent 31%),
-    radial-gradient(circle at 8% 100%, rgba(133,171,223,.11), transparent 35%);
-  --hero-text: #ffffff;
-  --hero-copy: #d8e2f3;
-  --hero-kicker: #aec6ff;
-  --hero-status: #b9cce9;
-  --hero-btn-bg: linear-gradient(145deg, #fcfdff, #e8efff);
-  --hero-btn-color: #263e83;
-  --hero-btn-shadow: inset 0 1px 0 #ffffff, 0 8px 0 rgba(15,31,67,.16), 0 16px 25px rgba(10,24,54,.18);
+    radial-gradient(circle at 81% 22%, rgba(105,151,244,.13), transparent 35%),
+    radial-gradient(circle at 8% 100%, rgba(133,171,223,.09), transparent 35%);
+  --hero-text: #20365c;
+  --hero-copy: #4e617e;
+  --hero-kicker: #4165ae;
+  --hero-status: #5c6f8a;
+  --hero-btn-bg: linear-gradient(145deg, #4668df, #3154c3);
+  --hero-btn-color: #ffffff;
+  --hero-btn-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 12px 22px -12px rgba(49,84,195,.55);
 }
 
 /* --------------------------------------------------------------------------
@@ -310,6 +310,7 @@ button, input, select, textarea { font-family: inherit; }
     inset 0 1px 0 rgba(255,255,255,.38),
     inset 0 -10px 20px rgba(0,0,0,.26);
 }
+.logo svg { position: relative; z-index: 1; width: 25px; height: 25px; }
 .logo::before {
   content: "";
   position: absolute;
@@ -389,6 +390,7 @@ button, input, select, textarea { font-family: inherit; }
   transition: height var(--t) var(--ease-spring);
 }
 .tab-btn:hover { color: var(--text); background: var(--glass); }
+.tab-btn[hidden] { display: none; }
 .tab-btn:hover .nav-icon { transform: scale(1.06); }
 .tab-btn.active {
   color: var(--text);
@@ -417,46 +419,17 @@ button, input, select, textarea { font-family: inherit; }
   stroke-linejoin: round;
 }
 .tab-btn.active .nav-icon {
-  color: color-mix(in srgb, var(--accent) 70%, #ffffff);
+  color: color-mix(in srgb, var(--accent) 70%, var(--text));
   background: color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .sidebar-spacer { flex: 1; min-height: 12px; }
 
-.security-note {
-  margin: 12px 2px 0;
-  padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--green) 22%, transparent);
-  border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--green) 6%, transparent);
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.58;
-}
-.security-note strong {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-bottom: 4px;
-  color: color-mix(in srgb, var(--green) 82%, var(--text));
-  font-size: 11px;
-  font-weight: 700;
-}
-.security-note strong::before {
-  content: "";
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 10px var(--green);
-  animation: soft-pulse 3.4s var(--ease) infinite;
-}
 
 /* --------------------------------------------------------------------------
    6. 配色说明
    -------------------------------------------------------------------------- */
-/* 本版是固定的一套配色（深色为准，令牌写在 :root 里），没有配色切换入口，
-   也不依赖任何后端设置。组件样式全部走令牌，所以要换成浅色只需要把上面
-   [data-theme="light"] 那段令牌搬进 :root —— 组件规则一行都不用改。 */
+/* 配色在 HTML 根节点声明，首帧即应用浅色，不依赖后端加载或异步脚本。 */
 
 /* --------------------------------------------------------------------------
    7. 工作区与顶栏
@@ -501,13 +474,6 @@ button, input, select, textarea { font-family: inherit; }
 }
 .page-heading p { margin-top: 6px; color: var(--muted); font-size: 11.5px; }
 
-.top-status {
-  margin-left: auto;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 7px;
-}
 
 .badge {
   display: inline-flex;
@@ -738,6 +704,7 @@ main {
 .section-title p { margin-top: 6px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .section-header .btn { flex: 0 0 auto; }
 .section-header .section-title + .btn { margin-left: auto; }
+.provider-header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .section-body { padding: 16px 18px; }
 
 .count-pill {
@@ -811,6 +778,8 @@ main {
   color: var(--red);
   box-shadow: none;
 }
+[data-theme="light"] .btn.blue { background: linear-gradient(135deg, #4668df, #3154c3); }
+[data-theme="light"] .btn.green { background: linear-gradient(135deg, #138763, #087153); }
 .btn.red:hover { background: color-mix(in srgb, var(--red) 20%, transparent); border-color: color-mix(in srgb, var(--red) 48%, transparent); }
 .btn.ghost {
   background: var(--glass);
@@ -926,6 +895,9 @@ main {
 }
 .feature-hub-hero p { max-width: 620px; margin: 0; color: var(--hero-copy); font-size: 12px; line-height: 1.6; }
 .feature-hub-hero .hub-launch-status { margin-top: 15px; color: var(--hero-status); font-size: 11.5px; }
+.hub-egress { display:flex; align-items:center; gap:8px; margin-top:15px; color:var(--hero-status); font-size:11.5px; line-height:1.7; }
+.hub-egress [data-egress-info] { min-width:0; overflow-wrap:anywhere; }
+.hub-egress .btn { flex:0 0 auto; padding:2px 7px; font-size:15px; }
 
 .hub-launch.btn.blue {
   min-width: 186px;
@@ -940,31 +912,26 @@ main {
 .hub-launch.btn.blue:hover { transform: translateY(-2px); }
 .hub-launch.btn.blue:active { transform: translateY(0) scale(.985); }
 
-/* 功能列表：保留 0.1.10 的“安静列表”层级，用发丝分隔线代替卡片边框 */
-.feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 26px; row-gap: 0; }
+/* 功能表面：图标、状态和操作保持独立，悬停时只抬升当前项。 */
+.feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 
 .feature-card {
   position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 76px;
-  padding: 14px 8px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  box-shadow: none;
-  transition: background var(--t) var(--ease), transform var(--t) var(--ease);
+  min-height: 94px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(145deg, var(--glass), var(--card-bg-2));
+  box-shadow: inset 0 1px 0 var(--hl), 0 3px 9px -5px rgba(0,0,0,.16);
+  transition: background .18s var(--ease), transform .18s var(--ease), border-color .18s var(--ease), box-shadow .18s var(--ease);
 }
 .feature-card::before {
-  content: "";
-  position: absolute;
-  left: 8px; right: 8px; bottom: 0;
-  height: 1px;
-  background: var(--line);
-  transition: opacity var(--t) var(--ease);
+  display: none;
 }
-.feature-card:nth-last-child(-n+2)::before { opacity: 0; }
+.feature-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
 .feature-card::after {
   content: "";
   position: absolute;
@@ -976,10 +943,17 @@ main {
   background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--accent) 15%, transparent), transparent 66%);
   transition: opacity var(--t-slow) var(--ease);
 }
-.feature-card:hover { background: var(--glass); }
-.feature-card:hover::before { opacity: 0; }
-.feature-card:hover::after { opacity: 1; }
+.feature-card:hover, .feature-card:focus-within { transform: translateY(-3px); border-color: color-mix(in srgb, var(--accent) 36%, var(--line)); box-shadow: 0 12px 26px -18px color-mix(in srgb, var(--accent) 65%, transparent), inset 0 1px 0 var(--hl); }
+.feature-card:hover::after, .feature-card:focus-within::after { opacity: 1; }
+.feature-card:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 23%, var(--line)); }
+.feature-card[aria-busy="true"] { opacity: .65; }
 .feature-card > * { position: relative; z-index: 1; }
+.feature-symbol { position: relative; display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 12px; border: 1px solid var(--line); background: linear-gradient(145deg, var(--glass-hi), var(--glass)); color: var(--muted); box-shadow: inset 0 1px 0 var(--hl); transition: transform .2s var(--ease-spring), color .2s, background .2s; }
+.feature-symbol svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.feature-symbol::after { content: ""; position: absolute; width: 6px; height: 6px; right: -2px; bottom: -2px; border-radius: 50%; border: 2px solid var(--bg); background: var(--muted-2); box-sizing: content-box; transition: background .2s, box-shadow .2s; }
+.feature-card:has(input:checked) .feature-symbol { color: var(--accent); background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 16%, var(--card-bg)), var(--glass)); }
+.feature-card:has(input:checked) .feature-symbol::after { background: var(--green); box-shadow: 0 0 7px color-mix(in srgb, var(--green) 24%, transparent); }
+.feature-card:hover .feature-symbol { transform: translateY(-1px) rotate(-5deg); }
 .feature-card-copy { flex: 1; min-width: 0; }
 .feature-card-copy strong { display: block; margin-bottom: 4px; color: var(--text); font-size: 13.5px; font-weight: 650; }
 .feature-card-copy small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
@@ -1012,6 +986,15 @@ main {
 }
 .feature-toggle input:checked + span::after { transform: translateX(19px); }
 .feature-toggle input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.feature-toggle input:checked + span { box-shadow: 0 3px 12px -5px var(--accent), inset 0 1px 0 rgba(255,255,255,.18); }
+.feature-toggle input:active + span::after { width: 22px; }
+.feature-toggle input:checked:active + span::after { transform: translateX(16px); }
+.feature-toggle input:disabled { cursor: wait; }
+.tab-btn { overflow: hidden; }
+.tab-btn:active { transform: scale(.975); }
+.press-feedback { position: absolute !important; z-index: 3 !important; pointer-events: none; width: 80px; height: 80px; margin: -40px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, currentColor 20%, transparent), transparent 70%); animation: press-feedback .38s ease-out forwards; }
+@keyframes press-feedback { from { opacity: .7; transform: scale(.25); } to { opacity: 0; transform: scale(3); } }
+@media (prefers-reduced-motion: reduce) { .feature-card:hover, .feature-card:focus-within, .feature-card:hover .feature-symbol, .tab-btn:active { transform: none; } .press-feedback { display: none; } }
 
 /* --------------------------------------------------------------------------
    12. 供应商列表
@@ -1136,6 +1119,16 @@ main {
   background: #fff;
   box-shadow: 0 0 12px -2px color-mix(in srgb, var(--accent) 80%, transparent);
 }
+
+.p-item.selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+.p-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.provider-style-editor { margin: 12px 0 16px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.provider-style-editor summary { cursor: pointer; font-size: 12px; font-weight: 650; }
+.provider-style-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.provider-style-preview { cursor: default; margin-top: 10px; }
+.provider-style-preview .provider-route { white-space: normal; }
+.provider-style-status { margin: 10px 0 0; font-size: 11px; color: var(--muted); }
+.provider-style-status[data-error="true"] { color: var(--red, #b42318); }
 
 /* 操作条 */
 .action-bar {
@@ -2063,11 +2056,6 @@ input[type="range"]:active::-webkit-slider-thumb {
 #tab-translation .checkbox-line span { color: var(--text); font-size: 12.5px; font-weight: 620; }
 #tab-translation .checkbox-line small { grid-column: 2; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
 
-/* 功能列表变成单列时，倒数第二行要保留分隔线 */
-@media (max-width: 980px) {
-  .feature-card:nth-last-child(2)::before { opacity: 1; }
-}
-
 /* 兼容历史写法 toast(msg, 'error')：按错误色渲染，不要退回默认蓝色 */
 .toast.error::before {
   content: "!";
@@ -2075,6 +2063,72 @@ input[type="range"]:active::-webkit-slider-thumb {
   color: color-mix(in srgb, var(--red) 82%, var(--text));
 }
 .toast.error::after { background: linear-gradient(90deg, var(--red), color-mix(in srgb, var(--red) 45%, var(--accent))); }
+
+[data-codex-only][hidden], #claude-provider-editor[hidden], #claude-gateway-translation-note[hidden], #claude-translation-card[hidden] { display:none !important; }
+[data-claude-translation-only][hidden] { display:none !important; }
+.app-switcher { display:flex; gap:6px; padding:4px; border:1px solid var(--line); border-radius:14px; background:var(--glass); }
+.app-switch { display:flex; align-items:center; gap:9px; padding:9px 15px; border:1px solid transparent; border-radius:10px; background:transparent; color:var(--muted); font:inherit; font-weight:650; cursor:pointer; transition:background .18s,box-shadow .18s,transform .18s; }
+.app-switch svg { width:22px; height:22px; flex:none; }
+.app-switch:hover { background:color-mix(in srgb,var(--accent) 7%,transparent); }
+.app-switch[aria-pressed="true"] { background:var(--card-bg,white); color:var(--text); border-color:var(--line); box-shadow:0 3px 10px #15234412; }
+.app-switch[data-app="claude"] svg { color:#c66d4b; }
+.app-switch:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.app-switch:disabled { opacity:.45; cursor:default; }
+.topbar { flex-wrap:wrap; gap:12px 22px; }
+.app-switcher-row { flex-basis:100%; display:flex; }
+body[data-toolbox-app="claude"] .eyebrow { color:#b5684d; }
+
+/* App palettes inherit through the existing components, including their icons. */
+body[data-toolbox-app="claude"] {
+  --bg: #fff8f2;
+  --bg-2: #f9ede2;
+  --sidebar-bg: linear-gradient(180deg, #ffffff, #fff8f1);
+  --topbar-bg: rgba(255,252,248,.88);
+  --card-bg-2: #fffcf9;
+  --glass: rgba(146,77,35,.035);
+  --glass-hi: rgba(146,77,35,.07);
+  --field-bg-hover: #fff9f3;
+  --line: rgba(128,77,40,.12);
+  --line-hi: rgba(128,77,40,.22);
+  --accent: #b9582e;
+  --accent-2: #d58b58;
+  --info: #b9582e;
+  --aurora-1: rgba(241,170,105,.16);
+  --aurora-2: rgba(250,205,157,.14);
+  --aurora-3: rgba(230,155,109,.06);
+  --hero-bg: linear-gradient(116deg, #fffdfa 0%, #fff0df 56%, #ffe2c5 100%);
+  --hero-border: #ecd4bc;
+  --hero-glow: radial-gradient(circle at 81% 22%, rgba(243,180,112,.17), transparent 35%), radial-gradient(circle at 8% 100%, rgba(228,160,111,.08), transparent 35%);
+  --hero-text: #70422c;
+  --hero-copy: #85634d;
+  --hero-kicker: #a35831;
+  --hero-status: #896c57;
+  --hero-btn-bg: linear-gradient(135deg, #ffe1bf, #f6c99f);
+  --hero-btn-color: #663718;
+  --hero-btn-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 10px 22px -14px rgba(151,84,40,.4);
+}
+body[data-toolbox-app="claude"] .btn.blue {
+  color: var(--hero-btn-color);
+  background: var(--hero-btn-bg);
+  border-color: #e9b98f;
+  box-shadow: var(--hero-btn-shadow);
+}
+body[data-toolbox-app="claude"] .logo {
+  background: linear-gradient(150deg, #ffdfb9, #efbb91 52%, #d59066);
+  color: #703f24;
+  box-shadow: 0 12px 26px -14px #bb784960, inset 0 1px 0 #ffffff90;
+}
+.app-switch[data-app="codex"] svg { color:#5867c6; }
+.app-switch[data-app="codex"][aria-pressed="true"] {
+  background:linear-gradient(135deg,#eff4ff,#f2eeff);
+  border-color:#d9def2;
+}
+.app-switch[data-app="claude"][aria-pressed="true"] {
+  background:linear-gradient(135deg,#fff6eb,#ffead5);
+  border-color:#efd1b2;
+  color:#76482d;
+}
+
 </style>
 </head>
 <body>
@@ -2087,11 +2141,17 @@ input[type="range"]:active::-webkit-slider-thumb {
 <div class="app-shell">
   <aside class="sidebar">
     <div class="brand-lockup">
-      <div class="logo">C</div>
-      <div class="brand">Codex 工具箱<small id="app-version">PUBLIC BETA</small></div>
+      <div class="logo" id="brand-icon" role="img" aria-label="Codex"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="3" width="20" height="18" rx="5" stroke="currentColor" stroke-width="1.8"/><path d="m7 8 4 4-4 4m6 0h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="brand"><span id="brand-name">Codex 工具箱</span><small id="app-version">PUBLIC BETA</small></div>
     </div>
     <div class="nav-label">WORKSPACE</div>
     <nav class="side-nav">
+      <button class="tab-btn" hidden data-claude-only data-tab="tab-claude-home" data-title="Claude 功能中心" data-subtitle="选择 Claude 功能">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9H4zM9 20v-6h6v6"/></svg></span><span>首页</span>
+      </button>
+      <button class="tab-btn" hidden data-claude-only data-tab="tab-claude-switch" data-title="Claude 通道切换" data-subtitle="官方连接与保存的第三方网关">
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 7h11M19 7h1M4 17h1M9 17h11M15 4v6M9 14v6"/></svg></span><span>通道切换</span>
+      </button>
       <button class="tab-btn active" data-tab="tab-home" data-title="功能中心" data-subtitle="选择功能，启动 Codex">
         <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9H4zM9 20v-6h6v6"/></svg></span>
         <span>首页</span>
@@ -2116,37 +2176,85 @@ input[type="range"]:active::-webkit-slider-thumb {
         <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 5h10v10H4zM10 9h10v10H10M7 8h4M9 7v5M6 12h6M14 12h3M15.5 11v5M13 16h5"/></svg></span>
         <span>中文翻译</span>
       </button>
-      <button class="tab-btn" data-feature="diagnostics" data-tab="tab-diagnostics" data-title="本地诊断" data-subtitle="核对工具箱读取的数据、备份和实验开关状态">
+      <button class="tab-btn" data-tab="tab-diagnostics" data-title="排障信息" data-subtitle="核对本地数据、备份与进程状态">
         <span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4M12 16h.01"/></svg></span>
-        <span>本地诊断</span>
+        <span>排障信息</span>
       </button>
     </nav>
     <div class="sidebar-spacer"></div>
-    <div class="security-note">
-      <strong>本地安全存储</strong>
-      API Key 已由 Windows DPAPI 加密。
-    </div>
   </aside>
 
   <section class="workspace">
     <header class="topbar">
+      <div class="app-switcher-row"><div class="app-switcher" role="group" aria-label="应用功能">
+        <button class="app-switch" data-app="codex" aria-label="Codex 功能" aria-pressed="true" onclick="selectToolboxApp('codex')"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="3" width="20" height="18" rx="5" stroke="currentColor" stroke-width="1.8"/><path d="m7 8 4 4-4 4m6 0h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Codex</span></button>
+        <button class="app-switch" id="claude-app-button" disabled data-app="claude" aria-label="Claude 功能" aria-pressed="false" onclick="selectToolboxApp('claude')"><svg viewBox="0 0 24 24" aria-hidden="true"><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v20M2 12h20M5 5l14 14M5 19 19 5M8 3l8 18M3 8l18 8M3 16l18-8M8 21l8-18"/></g></svg><span>Claude</span></button>
+      </div></div>
       <div class="page-heading">
         <span class="eyebrow">CODEX TOOLBOX</span>
         <h1 id="page-title">功能中心</h1>
         <p id="page-subtitle">选择功能，启动 Codex</p>
       </div>
-      <div class="top-status">
-        <div class="badge"><span class="dot blue"></span><span id="st-channel">加载中</span></div>
-        <div class="badge"><span class="dot gray"></span><span id="st-proc">Codex --</span></div>
-        <div class="badge"><span class="dot gray"></span><span id="st-proxy">代理 --</span></div>
-      </div>
     </header>
 
     <main>
+      <div class="panel" id="tab-claude-home">
+        <div class="card feature-hub-hero">
+          <div><span class="section-kicker">CLAUDE WORKSPACE</span><h2>准备好后，打开 Claude</h2><p id="claude-launch-copy">打开后自动开启页面翻译。</p><div class="hub-launch-status" id="claude-home-channel">当前通道：官方连接</div><div class="hub-egress"><span data-egress-info aria-live="polite">出口信息：检测中…</span><button class="btn ghost sm" data-egress-refresh onclick="precheckNetworkWarning(true)" title="刷新出口信息" aria-label="刷新出口信息">↻</button></div><div class="hub-launch-status" id="claude-hub-status" hidden></div></div>
+          <button class="btn blue hub-launch" id="claude-hub-button" onclick="launchClaudeHub()">打开 Claude</button>
+        </div>
+        <div class="card section-card">
+          <div class="section-header"><div class="section-title"><h2>选择功能</h2></div></div>
+          <div class="section-body"><div class="feature-grid">
+            <div class="feature-card" data-feature-tab="tab-claude-switch"><div class="feature-card-copy"><strong>通道切换</strong><small>官方连接与第三方网关</small></div><button class="btn ghost sm feature-configure" onclick="document.querySelector('[data-tab=tab-claude-switch]').click()">配置</button></div>
+            <div class="feature-card" data-feature-tab="tab-translation"><div class="feature-card-copy"><strong>中文翻译</strong><small>界面、回答与输入</small></div><button class="btn ghost sm feature-configure" onclick="document.querySelector('[data-tab=tab-translation]').click()">配置</button></div>
+          </div></div>
+        </div>
+      </div>
+      <div class="panel" id="tab-claude-switch">
+        <div class="card overview-card">
+          <div class="overview-copy">
+            <div class="section-kicker">ACTIVE CHANNEL</div>
+            <div class="active-channel"><span class="channel-orb"></span><div class="value" id="claude-active-provider">--</div></div>
+            <div class="model-line"><span>当前连接</span><span class="model-pill" id="claude-active-mode">--</span></div>
+          </div>
+          <div class="health-grid">
+            <div class="health-tile"><div class="health-head">认证方式</div><div class="value" id="claude-active-auth">--</div></div>
+            <div class="health-tile"><div class="health-head">模型配置</div><div class="value" id="claude-active-models">--</div></div>
+          </div>
+        </div>
+        <div class="card section-card">
+          <div class="section-header"><div class="section-title"><h2>全局默认通道</h2><p>选择供应商后切换并重启 Claude。</p></div><div class="provider-header-actions"><button class="btn ghost" id="claude-provider-css-import" disabled onclick="importProviderCardCss('claude')">导入 CSS</button><button class="btn green" id="claude-provider-add" onclick="editClaudeProvider()">＋ 添加供应商</button></div></div>
+          <div class="section-body">
+            <div id="claude-provider-list" class="p-list"></div>
+            <div class="action-bar">
+              <span class="action-hint" id="claude-provider-action-hint">选择一个通道后可进行操作</span>
+              <button class="btn ghost" id="claude-provider-check" onclick="checkClaudeProvider(claudeProviderSelected,this)">检查连接</button>
+              <button class="btn ghost" id="claude-provider-edit" onclick="editClaudeProvider(claudeProviderSelected)">编辑</button>
+              <button class="btn red" id="claude-provider-delete" onclick="deleteClaudeProvider(claudeProviderSelected)">删除</button>
+              <button class="btn blue" id="claude-provider-switch" onclick="switchClaudeProvider(claudeProviderSelected)">切换到选中 →</button>
+            </div>
+            <details class="muted" style="margin-top:14px"><summary>连接说明与导入</summary><p>官方连接使用原有登录；第三方需兼容 Anthropic Messages API，会话存于独立的本地历史。检查连接会发送最小测试请求，可能产生少量费用。</p><button class="btn ghost sm" id="claude-provider-import" onclick="importClaudeProviders(this)">从 Claude 本地配置导入</button><p>只新增供应商，不切换通道，不覆盖已有条目；相同地址的不同账户可分别导入。</p></details>
+            <details id="claude-import-report" class="muted" style="margin-top:12px" hidden><summary>导入明细</summary><ul></ul></details>
+            <div id="claude-channel-status" class="translation-status" hidden aria-live="polite"></div>
+          </div>
+        </div>
+        <div class="card section-card" id="claude-provider-editor" hidden>
+          <div class="section-header"><div class="section-title"><h2 id="claude-provider-editor-title">添加供应商</h2></div><button class="btn ghost sm" onclick="closeClaudeProviderEditor()">取消</button></div>
+          <div class="section-body">
+            <input type="hidden" id="claude-provider-id">
+            <div class="row2"><div class="field"><label>名称</label><input id="claude-provider-name" type="text" placeholder="例如：我的 Claude 网关"></div><div class="field"><label>接口地址</label><input id="claude-provider-url" type="url" placeholder="https://gateway.example.com"></div></div>
+            <div class="row2"><div class="field"><label>API Key</label><input id="claude-provider-key" type="password" autocomplete="new-password" placeholder="保存在 Windows DPAPI 中"></div><div class="field"><label>认证方式</label><select id="claude-provider-auth"><option value="x-api-key">API Key · x-api-key</option><option value="bearer">Bearer Token</option></select></div></div>
+            <div class="field"><label>模型 ID（可选，每行一个）</label><textarea id="claude-provider-models" rows="3" placeholder="留空自动发现 Claude 模型"></textarea><p class="muted">填写网关提供的 Claude Sonnet、Opus 或 Haiku 模型 ID。仅支持 OpenAI 接口或其他模型的网关需要协议转换。</p></div>
+            <div id="claude-provider-style"></div>
+            <button class="btn blue" id="claude-provider-save" onclick="saveClaudeProvider()">保存供应商</button>
+          </div>
+        </div>
+      </div>
       <!-- ============ 功能中心 ============ -->
       <div class="panel active" id="tab-home">
         <div class="card feature-hub-hero">
-          <div><span class="section-kicker">YOUR WORKSPACE</span><h2>准备好后，启动 Codex</h2><p>已开启的外观与翻译会在启动时应用。</p><div class="hub-launch-status" id="hub-launch-status">正在读取功能状态…</div></div>
+          <div><span class="section-kicker">YOUR WORKSPACE</span><h2>准备好后，启动 Codex</h2><p>已开启的外观与翻译会在启动时应用。</p><div class="hub-egress"><span data-egress-info aria-live="polite">出口信息：检测中…</span><button class="btn ghost sm" data-egress-refresh onclick="precheckNetworkWarning(true)" title="刷新出口信息" aria-label="刷新出口信息">↻</button></div><div class="hub-launch-status" id="hub-launch-status" hidden></div></div>
           <button class="btn blue hub-launch" id="hub-launch-button" onclick="launchCodexHub()">启动 Codex</button>
         </div>
         <div class="card section-card">
@@ -2157,7 +2265,6 @@ input[type="range"]:active::-webkit-slider-thumb {
             <div class="feature-card"><div class="feature-card-copy"><strong>会话归档</strong><small>归档与恢复</small></div><button class="btn ghost sm feature-configure" onclick="openFeaturePanel('session_archive')">配置</button><label class="feature-toggle"><input type="checkbox" data-feature-toggle="session_archive" onchange="toggleFeature('session_archive',this.checked)"><span></span></label></div>
             <div class="feature-card"><div class="feature-card-copy"><strong>实验外观</strong><small>背景与透明度</small></div><button class="btn ghost sm feature-configure" onclick="openFeaturePanel('local_appearance')">配置</button><label class="feature-toggle"><input type="checkbox" data-feature-toggle="local_appearance" onchange="toggleFeature('local_appearance',this.checked)"><span></span></label></div>
             <div class="feature-card"><div class="feature-card-copy"><strong>中文翻译</strong><small>界面、回答与输入</small></div><button class="btn ghost sm feature-configure" onclick="openFeaturePanel('surface_translation')">配置</button><label class="feature-toggle"><input type="checkbox" data-feature-toggle="surface_translation" onchange="toggleFeature('surface_translation',this.checked)"><span></span></label></div>
-            <div class="feature-card"><div class="feature-card-copy"><strong>本地诊断</strong><small>配置与进程状态</small></div><button class="btn ghost sm feature-configure" onclick="openFeaturePanel('diagnostics')">查看</button><label class="feature-toggle"><input type="checkbox" data-feature-toggle="diagnostics" onchange="toggleFeature('diagnostics',this.checked)"><span></span></label></div>
           </div></div>
         </div>
       </div>
@@ -2201,7 +2308,10 @@ input[type="range"]:active::-webkit-slider-thumb {
                 <h2>全局默认通道</h2>
                 <p>用于新会话；已有会话可单独设置。</p>
               </div>
-              <button class="btn green" onclick="openProviderModal()">＋ 添加供应商</button>
+              <div class="provider-header-actions">
+                <button class="btn ghost" id="provider-css-import" disabled onclick="importProviderCardCss('codex')">导入 CSS</button>
+                <button class="btn green" onclick="openProviderModal()">＋ 添加供应商</button>
+              </div>
           </div>
           <div class="section-body">
             <div class="p-list" id="provider-list"></div>
@@ -2412,19 +2522,24 @@ input[type="range"]:active::-webkit-slider-thumb {
               <div class="section-body">
               <label class="checkbox-line"><input type="checkbox" id="translation-interface" checked><span>界面与设置</span><small>固定界面文字 · 免费</small></label>
               <label class="checkbox-line"><input type="checkbox" id="translation-messages" checked><span>AI 回答</span><small>仅翻译回答正文；代码与链接保持原样</small></label>
-              <label class="checkbox-line"><input type="checkbox" id="translation-input" checked><span>中文输入</span><small>回车翻译，检查后再发送；Shift+回车换行</small></label>
+              <label class="checkbox-line"><input type="checkbox" id="translation-input" checked><span>中文输入</span><small>回车翻译，预览中再按回车确认发送</small></label>
+              <div id="claude-translation-card" hidden>
+                <label class="checkbox-line"><input type="checkbox" id="claude-enter" checked><span>回车快捷翻译</span><small>在 Claude 输入框启用；预览后再次回车确认发送</small></label>
+                <p class="muted" id="claude-gateway-translation-note" hidden>第三方供应商模式暂不支持页面翻译；可在通道切换中返回官方连接。</p>
+              </div>
               <div class="field"><label>翻译服务（仅翻译界面时可不选）</label><select id="translation-provider" onchange="translationProviderChanged()"></select><div class="muted" style="margin-top:5px;">翻译回答和输入会调用所选服务，按服务商费率计费。</div></div>
               <div class="field"><label>模型（可选）</label><input type="text" id="translation-model" placeholder="使用服务的默认模型"></div>
-              <div class="field"><label>Codex 安装位置（可选）</label><input type="text" id="translation-codex-path" placeholder="自动查找 Codex"></div>
+              <div class="field" data-codex-only><label>Codex 安装位置（可选）</label><input type="text" id="translation-codex-path" placeholder="自动查找 Codex"></div>
                 <div class="btn-row">
                 <button class="btn blue" onclick="saveSurfaceTranslationSettings()">保存翻译设置</button>
-                <button class="btn green" onclick="applySurfaceTranslation()">更新当前 Codex</button>
-                <button class="btn ghost" onclick="stopSurfaceTranslation()">关闭翻译，恢复英文</button>
+                <button class="btn green" id="translation-apply" onclick="applySelectedTranslation()">应用到当前 Codex</button>
+                <button class="btn ghost" onclick="stopSelectedTranslation()">关闭翻译，恢复英文</button>
               </div>
-              <div class="translation-status" id="translation-status">翻译按钮还没有启动。</div>
+              <div class="translation-status" data-codex-only id="translation-status">翻译按钮还没有启动。</div>
+              <div class="translation-status" id="claude-translation-status" data-claude-translation-only hidden>翻译按钮还没有启动。</div>
             </div>
           </div>
-          <details class="translation-help"><summary>翻译如何工作</summary><p>启动后，Codex 右下角会显示“中→英、翻译、原文、翻译页面”控件。页面默认保持原文；可随时恢复。工具箱不会修改 Codex 的安装文件、设置、账号或聊天记录，也不会将 API Key 放入 Codex 页面。</p></details>
+          <details class="translation-help"><summary>翻译如何工作</summary><p>启动后会显示翻译浮窗。拖动顶部把手可移动并记住位置，点击 ↺ 恢复默认位置。默认保持原文，可随时恢复；工具箱不会修改安装文件、账号或聊天记录，也不会将 API Key 放入页面。</p><p data-claude-translation-only hidden>Claude 与 Codex 共用翻译服务和范围。首次接入需在 Claude 手动开启 Developer Mode，并在 Console 确认 allow pasting；当前支持官方 Chat 页面。</p></details>
         </div>
       </div>
 
@@ -2435,7 +2550,7 @@ input[type="range"]:active::-webkit-slider-thumb {
           <span>这里只显示本机配置与备份的数量和路径，不显示 API Key、会话内容或数据库记录。用于确认升级后工具箱仍读取同一份本地数据。</span>
         </div>
         <div class="card section-card">
-          <div class="section-header"><div class="section-title"><h2>本地状态</h2><p>遇到“数据似乎不见了”时，先在这里确认数据目录和读取数量。</p></div><button class="btn ghost" onclick="loadDiagnostics()">刷新诊断</button></div>
+          <div class="section-header"><div class="section-title"><h2>本地状态</h2><p>用于核对数据目录、备份和进程；连接问题请使用供应商连接预检。</p></div><button class="btn ghost" onclick="loadDiagnostics()">刷新状态</button></div>
           <div class="section-body" id="diagnostics-content"><div class="empty">正在读取本地状态…</div></div>
         </div>
       </div>
@@ -2497,10 +2612,11 @@ input[type="range"]:active::-webkit-slider-thumb {
     <label class="checkbox-line"><input type="checkbox" id="pm-proxy"> 需要本地翻译（上游仅支持 Chat Completions；多数兼容预设需要）</label>
     <div class="muted" style="margin:-3px 0 10px;">“检测协议”会发送一次最小请求，可能产生极少量 token；仅给出建议，不会自动保存或切换。</div>
     <div class="field" id="pm-upstream-field"><label>上游地址</label><input type="text" id="pm-upstream" placeholder="https://api.deepseek.com/v1"></div>
+    <div id="pm-style"></div>
     </div>
     <div class="modal-footer">
       <button class="btn ghost" onclick="closeProviderModal()">取消</button>
-      <button class="btn green" onclick="saveProvider()">保存供应商</button>
+      <button class="btn green" id="pm-save" onclick="saveProvider()">保存供应商</button>
     </div>
   </div>
 </div>
@@ -2519,6 +2635,23 @@ input[type="range"]:active::-webkit-slider-thumb {
   </div>
 </div>
 
+<div class="overlay" id="network-warning-modal">
+  <div class="modal connection-report">
+    <div class="modal-header">
+      <div><h2>Clash 网络提醒</h2><p>工具箱启动时自动检查；此提醒不阻止使用，也不会修改 Clash 设置。</p></div>
+      <button class="btn ghost modal-close" onclick="closeNetworkWarning()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="connection-summary" id="network-warning-summary"></div>
+      <div class="connection-results" id="network-warning-detail"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn ghost" onclick="closeNetworkWarning();precheckNetworkWarning(true)">重新检测</button>
+      <button class="btn blue" onclick="closeNetworkWarning()">知道了</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast-wrap" id="toasts"></div>
 
 <script>
@@ -2526,6 +2659,8 @@ let providers = [];
 let sessions = [];
 let selectedProviderId = null;
 let editingProvider = null;
+let providerSwitching = false;
+let providerSaving = false;
 const PRESET_MODELS = {};
 let communityExperiments = { channel_switching:true, session_routing:false, session_archive:true, local_appearance:false, surface_translation:false, diagnostics:true };
 let translationProviders = [];
@@ -2606,19 +2741,47 @@ async function loadCommunityExperiments() {
   applyFeatureVisibility();
   renderRouteList();
 }
+let selectedToolboxApp = 'codex';
+let claudeSupported = false;
+let lastCodexTab = 'tab-home';
+let lastClaudeTab = 'tab-claude-home';
+function selectToolboxApp(app) {
+  if (app === selectedToolboxApp || (app === 'claude' && !claudeSupported)) return;
+  if (selectedToolboxApp === 'codex') lastCodexTab = document.querySelector('.panel.active')?.id || 'tab-home';
+  if (selectedToolboxApp === 'claude') lastClaudeTab = document.querySelector('.panel.active')?.id || 'tab-claude-home';
+  selectedToolboxApp = app;
+  document.body.dataset.toolboxApp = app;
+  const brandIcon = document.getElementById('brand-icon');
+  brandIcon.replaceChildren(document.querySelector(`.app-switch[data-app="${app}"] svg`).cloneNode(true));
+  brandIcon.setAttribute('aria-label', app === 'claude' ? 'Claude' : 'Codex');
+  document.getElementById('brand-name').textContent = app === 'claude' ? 'Claude 工具箱' : 'Codex 工具箱';
+  document.querySelectorAll('.app-switch').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.app === app)));
+  applyFeatureVisibility();
+  const target = app === 'claude' ? lastClaudeTab : lastCodexTab;
+  const button = document.querySelector('.tab-btn[data-tab="'+target+'"]');
+  (button && !button.hidden ? button : document.querySelector('[data-tab="tab-home"]')).click();
+}
+function updateAppHeading(button) {
+  const claude = selectedToolboxApp === 'claude';
+  document.querySelector('.eyebrow').textContent = claude ? 'CLAUDE TOOLBOX' : 'CODEX TOOLBOX';
+  document.getElementById('page-title').textContent = button.dataset.title;
+  document.getElementById('page-subtitle').textContent = button.dataset.subtitle;
+}
 function applyFeatureVisibility() {
-  document.querySelectorAll('.tab-btn[data-feature]').forEach(button => {
-    button.hidden = !communityExperiments[button.dataset.feature];
+  const claude = selectedToolboxApp === 'claude';
+  document.querySelectorAll('.tab-btn').forEach(button => {
+    button.hidden = false;
+    if (button.dataset.feature) button.hidden = !communityExperiments[button.dataset.feature];
+    if (button.hasAttribute('data-claude-only')) button.hidden = !claude;
+    if (claude) button.hidden = !['tab-claude-home','tab-claude-switch','tab-translation'].includes(button.dataset.tab);
   });
-  const active = document.querySelector('.tab-btn.active[data-feature]');
-  if (active?.hidden) document.querySelector('[data-tab="tab-home"]')?.click();
-  const visible = Object.values(communityExperiments).filter(Boolean).length;
-  const effects = [
-    communityExperiments.local_appearance ? '外观' : '',
-    communityExperiments.surface_translation ? '翻译' : ''
-  ].filter(Boolean);
-  const status = document.getElementById('hub-launch-status');
-  if (status && !hubLaunching) status.textContent = `${visible} 个入口可见 · 启动效果：${effects.join('、') || '无'}`;
+  document.getElementById('claude-translation-card').hidden = !claude;
+  document.querySelectorAll('[data-claude-translation-only]').forEach(element => element.hidden = !claude);
+  document.getElementById('translation-apply').textContent = claude ? '应用到当前 Claude' : '应用到当前 Codex';
+  document.getElementById('translation-apply').disabled = claude && claudeChannelCurrent !== 'claude-official';
+  document.querySelectorAll('[data-codex-only]').forEach(element => element.hidden = claude);
+  const active = document.querySelector('.tab-btn.active');
+  if (active?.hidden && !claude) document.querySelector('[data-tab="tab-home"]')?.click();
 }
 async function toggleFeature(feature, enabled) {
   if (enabled) {
@@ -2635,7 +2798,13 @@ async function toggleFeature(feature, enabled) {
       return;
     }
   }
-  const result = await api('set_community_experiment', feature, enabled);
+  const featureInput = document.querySelector(`[data-feature-toggle="${feature}"]`);
+  const featureCard = featureInput?.closest('.feature-card');
+  if (featureInput) featureInput.disabled = true;
+  featureCard?.setAttribute('aria-busy', 'true');
+  let result;
+  try { result = await api('set_community_experiment', feature, enabled); }
+  finally { if (featureInput) featureInput.disabled = false; featureCard?.removeAttribute('aria-busy'); }
   if (!result || !result.ok) {
     toast(result ? result.error : '无法保存实验设置', 'err');
     return loadCommunityExperiments();
@@ -2666,6 +2835,7 @@ async function launchCodexHub() {
   hubLaunching = true;
   const button = document.getElementById('hub-launch-button');
   const status = document.getElementById('hub-launch-status');
+  status.hidden = false;
   button.disabled = true; button.textContent = '正在启动…'; status.textContent = '正在启动 Codex…';
   const result = await api('launch_codex_hub');
   hubLaunching = false; button.disabled = false; button.textContent = '启动 Codex';
@@ -2680,7 +2850,6 @@ async function refreshStatus() {
   try {
     const st = await api('get_status');
     if (!st) return;
-    document.getElementById('st-channel').textContent = st.provider_name;
     document.getElementById('s-provider').textContent = st.provider_name;
     document.getElementById('s-model').textContent = st.model;
     document.getElementById('s-effort').textContent = '思考 ' + effortLabel(st.reasoning_effort);
@@ -2689,15 +2858,8 @@ async function refreshStatus() {
     const processStatus = document.getElementById('s-proc');
     processStatus.textContent = st.codex_running ? '运行中' : '未运行';
     processStatus.title = processLabel;
-    document.getElementById('st-proc').textContent = 'Codex ' + (st.codex_running ? '运行中' : '未运行');
-    const procDot = document.getElementById('st-proc').previousElementSibling;
-    if (procDot) procDot.className = 'dot ' + (st.codex_running ? 'green' : 'gray');
-    const pd = document.getElementById('st-proxy');
     const sd = document.getElementById('s-proxy');
-    pd.textContent = '代理 ' + (st.proxy_running ? '运行中' : '未启动');
     sd.textContent = st.proxy_running ? ('运行中 (' + (st.proxy_url || '本地端口') + ')') : '未启动';
-    const proxyDot = pd.previousElementSibling;
-    if (proxyDot) proxyDot.className = 'dot ' + (st.proxy_running ? 'green' : 'gray');
   } finally {
     statusRefreshInFlight = false;
   }
@@ -2757,6 +2919,143 @@ function effortLabel(value) {
   return ({low:'低',medium:'中',high:'高',xhigh:'超高',max:'最大',ultra:'Ultra'})[value] || '保持当前';
 }
 
+/* ---------- 供应商卡片外观：解析数据，不挂载任意样式表 ---------- */
+const providerStyleDrafts = new Map();
+const providerStyleTargets = {
+  '.provider-card': ['', ['background','background-color','border-color','border-radius','box-shadow']],
+  '.provider-icon': ['.provider-mark', ['background','background-color','color','border-color','border-radius']],
+  '.provider-name': ['.p-name', ['color','font-weight']],
+  '.provider-detail': ['.provider-route', ['color','font-weight']],
+};
+function parseProviderCss(source) {
+  if (typeof source !== 'string' || new TextEncoder().encode(source).length > 32768) throw new Error('CSS 文件不能超过 32 KB');
+  const css = source.replace(/\/\*[\s\S]*?\*\//g, '').trim();
+  if (!css) return {rules: [], css: ''};
+  if (/[@\\<>"']/.test(css)) throw new Error('仅支持卡片 CSS；不支持外部资源、转义或 @ 规则');
+  const blocks = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  if (!blocks.length || css.replace(/([^{}]+)\{([^{}]*)\}/g, '').trim()) throw new Error('CSS 格式不完整，请参考示例');
+  const rules = [];
+  for (const [, selectorText, declarations] of blocks) {
+    const selectors = selectorText.split(',').map(value => value.trim());
+    for (const selector of selectors) if (!Object.hasOwn(providerStyleTargets, selector)) throw new Error('不支持选择器：' + selector + '。请使用示例中的卡片选择器');
+    const values = [];
+    for (const declaration of declarations.split(';').map(value => value.trim()).filter(Boolean)) {
+      const split = declaration.indexOf(':');
+      const property = declaration.slice(0, split).trim().toLowerCase();
+      const value = declaration.slice(split + 1).trim();
+      if (split < 1 || selectors.some(selector => !providerStyleTargets[selector][1].includes(property))) throw new Error('不支持样式属性：' + property);
+      const functions = [...value.matchAll(/([\w-]+)\s*\(/g)].map(match => match[1].toLowerCase());
+      const safeFunctions = ['rgb','rgba','hsl','hsla','hwb','lab','lch','oklab','oklch','color','color-mix','linear-gradient','radial-gradient','conic-gradient','repeating-linear-gradient','repeating-radial-gradient','repeating-conic-gradient'];
+      if (functions.some(name => !safeFunctions.includes(name)) || /!/.test(value) || !CSS.supports(property, value)) throw new Error('不支持或无效的样式值：' + property);
+      // Keep shadows and radii local; a giant spread can otherwise cover sibling cards.
+      if (['box-shadow','border-radius'].includes(property)) {
+        const geometry = value.replace(/(?:rgba?|hsla?|oklch|oklab|hwb|lab|lch|color)\([^()]*\)/gi, '').replace(/#[\da-f]{3,8}\b/gi, '');
+        if ([...geometry.matchAll(/(-?(?:\d*\.)?\d+(?:e[+-]?\d+)?)([a-z%]+)/gi)].some(match => match[2].toLowerCase() !== 'px' || Math.abs(Number(match[1])) > 64)) throw new Error('阴影与圆角请使用不超过 64px 的值');
+      }
+      values.push([property, value]);
+    }
+    if (!values.length) throw new Error('CSS 规则中没有可用的样式');
+    for (const selector of selectors) rules.push({selector, values});
+  }
+  return {rules, css: rules.map(rule => `${rule.selector} { ${rule.values.map(([key,value]) => `${key}: ${value};`).join(' ')} }`).join('\n')};
+}
+function applyProviderCss(card, source) {
+  // Revalidate saved data as well as imported files. No raw CSS ever reaches <style>.
+  let parsed;
+  try { parsed = parseProviderCss(source || ''); } catch { return false; }
+  for (const {selector, values} of parsed.rules) {
+    const target = providerStyleTargets[selector][0];
+    const nodes = target ? card.querySelectorAll(target) : [card];
+    for (const node of nodes) for (const [property,value] of values) node.style.setProperty(property,value);
+    if (selector === '.provider-detail') for (const node of card.querySelectorAll('.provider-route strong')) node.style.color = 'inherit';
+  }
+  return true;
+}
+function mountProviderStyleEditor(id, nameId) {
+  const host = document.getElementById(id);
+  host.innerHTML = `<details class="provider-style-editor"><summary>卡片外观 · CSS</summary>
+    <div class="provider-style-actions"><button class="btn sm ghost" type="button" data-import>导入 CSS</button><button class="btn sm ghost" type="button" data-reset>恢复默认</button><button class="btn sm ghost" type="button" data-example>下载示例</button></div>
+    <input type="file" accept=".css,text/css" hidden>
+    <p class="muted">仅调整这张供应商卡片的颜色、渐变、圆角和阴影。保存供应商后生效。</p>
+    <div data-preview></div><p class="provider-style-status" role="status"></p></details>`;
+  const input = host.querySelector('input');
+  host.querySelector('[data-import]').onclick = () => input.click();
+  host.querySelector('[data-reset]').onclick = () => { beginProviderStyle(id, ''); renderProviderStylePreview(id, nameId); };
+  host.querySelector('[data-example]').onclick = async event => {
+    const button = event.currentTarget;button.disabled=true;
+    try {
+      const result=await api('export_provider_css_example');
+      if (!result?.ok) toast(result?.error || '示例保存失败','err');
+      else if (!result.cancelled) toast('CSS 示例已保存','ok');
+    } finally {button.disabled=false;}
+  };
+  input.onchange = async () => {
+    const file = input.files[0]; input.value=''; if (!file) return;
+    const previous = providerStyleDrafts.get(id);
+    if (!previous) return;
+    // Each selection owns a new draft. Earlier reads cannot overwrite it or clear its busy state.
+    const draft = {css:previous.css, loading:true};
+    providerStyleDrafts.set(id, draft);
+    const status=host.querySelector('[role="status"]');status.dataset.error='false';status.textContent='正在读取 CSS…';
+    try {
+      if (!/\.css$/i.test(file.name)) throw new Error('请选择 .css 样式文件');
+      if (file.size > 32768) throw new Error('CSS 文件不能超过 32 KB');
+      let source;
+      try { source = new TextDecoder('utf-8', {fatal:true}).decode(await file.arrayBuffer()); }
+      catch { throw new Error('文件读取失败或编码不是 UTF-8，请另存为 UTF-8 后再导入'); }
+      const parsed = parseProviderCss(source);
+      if (providerStyleDrafts.get(id) !== draft) return;
+      if (!parsed.rules.length) throw new Error('CSS 文件中没有可用的卡片样式');
+      draft.css=parsed.css;
+      renderProviderStylePreview(id, nameId);
+      status.dataset.error='false';status.textContent='已导入 ' + file.name + ' · 保存后生效';
+    } catch (error) {
+      if (providerStyleDrafts.get(id) === draft) {status.dataset.error='true';status.textContent=error.message + '；未应用，保留先前样式';}
+    } finally {draft.loading=false;}
+  };
+  document.getElementById(nameId).addEventListener('input', () => renderProviderStylePreview(id, nameId));
+}
+function beginProviderStyle(id, css) {
+  providerStyleDrafts.set(id, {css: css || '', loading:false});
+  const host=document.getElementById(id),status=host.querySelector('[role="status"]');
+  host.querySelector('input').value='';status.dataset.error='false';status.textContent=css?'已保存的自定义样式':'使用默认外观';
+}
+function renderProviderStylePreview(id, nameId) {
+  const host=document.getElementById(id);
+  const card=document.createElement('div');card.className='p-item provider-style-preview';
+  card.innerHTML='<div class="provider-mark">P</div><div class="provider-info"><div class="provider-name-row"><span class="p-name"></span><span class="kind-tag relay">API</span></div><div class="provider-route">模型与通道信息 · 卡片预览</div></div>';
+  card.querySelector('.p-name').textContent=document.getElementById(nameId).value.trim() || '供应商名称';
+  applyProviderCss(card, providerStyleDrafts.get(id)?.css);
+  host.querySelector('[data-preview]').replaceChildren(card);
+}
+function importProviderCardCss(app) {
+  let editorId;
+  if (app === 'claude') {
+    if (claudeProviderBusy()) return;
+    // Preserve an open provider draft, including a new provider not yet saved.
+    if (document.getElementById('claude-provider-editor').hidden) {
+      const provider=claudeProviderRows.find(p=>p.id===claudeProviderSelected);
+      if (!provider || provider.official) return toast('请先选择一个第三方供应商', 'notice');
+      editClaudeProvider(provider.id);
+    }
+    editorId='claude-provider-style';
+  } else {
+    if (providerSwitching || providerSaving) return;
+    if (!document.getElementById('provider-modal').classList.contains('show')) {
+      const provider=providers.find(p=>p.id===selectedProviderId);
+      if (!provider) return toast('请先选择供应商', 'notice');
+      openProviderModal(provider);
+    }
+    editorId='pm-style';
+  }
+  const editor=document.getElementById(editorId);
+  editor.querySelector('details').open=true;
+  editor.scrollIntoView({block:'nearest'});
+  editor.querySelector('input[type="file"]').click();
+}
+mountProviderStyleEditor('pm-style','pm-name');
+mountProviderStyleEditor('claude-provider-style','claude-provider-name');
+
 /* ---------- 供应商 ---------- */
 async function loadProviders() {
   providers = await api('get_providers') || [];
@@ -2788,13 +3087,14 @@ function renderProviders() {
     return;
   }
   list.innerHTML = providers.map(p => `
-    <div class="p-item ${p.id===selectedProviderId ? 'selected':''}" data-provider-id="${esc(p.id)}" data-kind="${esc(p.kind)}">
+    <div class="p-item ${p.id===selectedProviderId ? 'selected':''}" tabindex="0" role="button" aria-pressed="${p.id===selectedProviderId}" data-provider-id="${esc(p.id)}" data-kind="${esc(p.kind)}">
       <div class="provider-mark">${esc((p.name||p.id||'?').trim().slice(0,1).toUpperCase())}</div>
       <div class="provider-info">
         <div class="provider-name-row">
           <span class="p-name">${esc(p.name)}</span>
           <span class="kind-tag ${p.kind}">${({official:'官方',direct:'API',relay:'API',local:'本地'})[p.kind]||'API'}</span>
           ${p.current ? '<span class="p-cur">当前</span>' : ''}
+          ${p.secret_unavailable ? '<span class="kind-tag" title="已有密钥引用已保留，请检查系统密钥访问权限或重新输入密钥">密钥暂不可读取</span>' : ''}
         </div>
         <div class="provider-route"><strong>${esc(p.model||'未设置模型')}</strong> · 思考${effortLabel(p.reasoning_effort)} · ${p.proxy?'本地协议翻译 API':'原生 Responses API'}</div>
       </div>
@@ -2802,7 +3102,9 @@ function renderProviders() {
       <button class="btn sm ghost p-edit" data-edit-provider="${esc(p.id)}" title="编辑供应商">✎</button>
     </div>`).join('');
   list.querySelectorAll('.p-item').forEach(item => {
+    applyProviderCss(item, providers.find(p => p.id === item.dataset.providerId)?.card_css);
     item.addEventListener('click', () => selectProvider(item.dataset.providerId));
+    item.addEventListener('keydown', event => {if (event.target === item && ['Enter',' '].includes(event.key)) {event.preventDefault();selectProvider(item.dataset.providerId);}});
   });
   list.querySelectorAll('[data-edit-provider]').forEach(button => {
     button.addEventListener('click', event => {
@@ -2813,29 +3115,40 @@ function renderProviders() {
   syncProviderActions();
 }
 function selectProvider(id) {
+  if (providerSwitching) return;
   selectedProviderId = id;
   renderProviders();
 }
 function syncProviderActions() {
   const selected = providers.find(p => p.id === selectedProviderId);
+  const cssImport=document.getElementById('provider-css-import');
+  cssImport.disabled=providerSwitching || providerSaving || !selected;
+  cssImport.title=selected ? '为“'+selected.name+'”导入卡片 CSS' : '请先选择供应商';
   const ids = ['btn-switch','btn-diagnose','btn-edit','btn-delete'];
-  ids.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = !selected; });
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = providerSwitching || !selected; });
   const del = document.getElementById('btn-delete');
-  if (del) del.disabled = !selected || selected.id === 'openai' || selected.current;
+  if (del) del.disabled = providerSwitching || !selected || selected.id === 'openai' || selected.current;
+  document.querySelectorAll('#provider-list .p-edit').forEach(button => button.disabled=providerSwitching);
+  const switchButton = document.getElementById('btn-switch');
+  if (switchButton) switchButton.textContent = providerSwitching ? '正在切换…' : selected?.current ? '重新应用 →' : '切换到选中 →';
   const hint = document.getElementById('provider-action-hint');
   if (hint) hint.textContent = selected
     ? (selected.current ? `已选：${selected.name}（当前全局 API，请先切换后再删除）` : `已选：${selected.name}`)
     : '选择一个 API 后可进行操作';
   const all = document.getElementById('btn-test-all');
-  if (all) all.disabled = allProvidersTesting || !providers.length;
+  if (all) all.disabled = providerSwitching || allProvidersTesting || !providers.length;
 }
 async function switchSelected() {
+  if (providerSwitching) return;
   if (!selectedProviderId) return toast('请先选择供应商', 'err');
-  const r = await api('switch_provider', selectedProviderId);
-  if (!r || !r.ok) return toast(r ? r.error : '切换失败', 'err');
-  toast(`已切换到【${r.name}】；新会话将在重启 Codex 后使用该通道`, 'ok');
-  await loadProviders();
-  await loadSessions();  // 切换后自动刷新会话列表
+  const id = selectedProviderId;
+  providerSwitching = true; syncProviderActions();
+  try {
+    const r = await api('switch_provider', id);
+    if (!r || !r.ok) return toast(r ? r.error : '切换失败', 'err');
+    toast(`已切换到【${r.name}】；重启 Codex 后，新会话使用该通道，已有会话保持原设置`, 'ok');
+    await loadProviders();
+  } finally {providerSwitching = false; syncProviderActions();}
 }
 async function diagnoseSelected() {
   if (!selectedProviderId) return toast('请先选择供应商', 'err');
@@ -2887,6 +3200,55 @@ function showConnectionReport(results) {
 function closeConnectionReport() {
   document.getElementById('connection-report-modal').classList.remove('show');
 }
+/* ---------- 工具箱启动时检查 Clash（正常静默，仅异常提醒） ---------- */
+function showNetworkWarning(payload) {
+  if (!payload || !payload.text) return;
+  const box = document.getElementById('network-warning-detail');
+  box.innerHTML = payload.text.split('\n').map(line => {
+    const text = line.trim();
+    if (!text) return '';
+    const isIssue = /^\d+\./.test(text);
+    return `<div class="connection-result${isIssue ? ' failed' : ''}"><span class="result-mark">${isIssue ? '!' : '·'}</span><div><small>${esc(text)}</small></div></div>`;
+  }).join('');
+  document.getElementById('network-warning-summary').innerHTML =
+    `<span class="total">${esc(payload.summary || '网络环境自检')}</span>`;
+  document.getElementById('network-warning-modal').classList.add('show');
+}
+function closeNetworkWarning() {
+  document.getElementById('network-warning-modal').classList.remove('show');
+}
+let networkPrecheckInFlight = false;
+function renderEgressInfo(detail, loading=false) {
+  let text = loading ? '出口信息：检测中…' : '出口信息：暂未获取';
+  if (!loading && detail?.exit_ip) {
+    let country = detail.country_name || detail.country || '未知';
+    if (/^[A-Za-z]{2}$/.test(detail.country || '')) {
+      try {country = new Intl.DisplayNames(['zh-CN'], {type:'region'}).of(detail.country.toUpperCase());} catch (_) {}
+    }
+    const timezone = detail.ip_timezone || '未知';
+    text = `出口 IP：${detail.exit_ip} · 国家：${country} · 时区：${timezone}`;
+  }
+  document.querySelectorAll('[data-egress-info]').forEach(element => {element.textContent=text;});
+}
+async function precheckNetworkWarning(force=false) {
+  if (networkPrecheckInFlight) return;
+  networkPrecheckInFlight = true;
+  renderEgressInfo(null,true);
+  document.querySelectorAll('[data-egress-refresh]').forEach(button => {button.disabled=true;});
+  try {
+    const result = await api('network_precheck',force);
+    renderEgressInfo(result?.detail);
+    if (result && result.text) showNetworkWarning(result);
+  } catch (error) {
+    // 自检失败只是拿不到提醒，不能影响启动流程。
+    console.warn('网络环境自检失败', error);
+    renderEgressInfo(null);
+    showNetworkWarning({text:'暂时无法检查 Clash 状态，请手动确认 Clash 已开启。',summary:'Clash 状态未确认'});
+  } finally {
+    networkPrecheckInFlight = false;
+    document.querySelectorAll('[data-egress-refresh]').forEach(button => {button.disabled=false;});
+  }
+}
 async function editSelected() {
   let p = providers.find(x => x.id === selectedProviderId);
   if (!p) p = providers.find(x => x.current);  // 没选中时自动用当前供应商
@@ -2900,20 +3262,17 @@ function editById(id) {
 async function fetchModels() {
   const url = document.getElementById('pm-url').value.trim();
   const key = document.getElementById('pm-key').value.trim();
-  if (!url || !key) return toast('请先填 Base URL 和 API Key', 'err');
+  if (!url && editingProvider?.id !== 'openai') return toast('请先填 Base URL', 'err');
   toast('正在获取模型列表…');
-  const r = await api('get_models', url, key);
+  const r = await api('get_models', url, key, editingProvider?.id || null);
   if (!r || !r.ok) return toast(r ? ('获取失败: ' + r.error) : '获取失败', 'err');
   // 不再用内置预设过滤真实结果：新模型一旦由服务端返回，立即可见。
   // 后端按创建时间排序；未提供创建时间的服务保留其原始顺序。
   const rawModels = Array.isArray(r.models) ? r.models : [];
   const allModels = rawModels.map(item => typeof item === 'string' ? item : item.id).filter(Boolean);
-  const models = allModels.slice(0, 24);
-  const note = allModels.length > models.length
-    ? `已显示 API 优先返回的 24 个模型；其余 ${allModels.length - models.length} 个旧型号可直接手动输入`
-    : `已显示 API 实时返回的 ${models.length} 个模型`;
+  const models = [...new Set(allModels)];
+  const note = `已显示服务实时返回的 ${models.length} 个模型，请选择；列表不代表协议兼容性`;
   const cur = document.getElementById('pm-model').value.trim();
-  if (!cur && models.length) document.getElementById('pm-model').value = models[0];
   renderModelChips(models, cur);
   toast(note, 'ok');
 }
@@ -2921,10 +3280,10 @@ async function detectProtocol() {
   const url = document.getElementById('pm-url').value.trim();
   const key = document.getElementById('pm-key').value.trim();
   const model = document.getElementById('pm-model').value.trim();
-  if (!url || !key || !model) return toast('请先填 Base URL、API Key 和模型', 'err');
+  if (!url || !model) return toast('请先填 Base URL 和模型', 'err');
   if (!confirm('将向该服务发送一次最小 /responses 请求用于识别协议，可能产生极少量 token。继续吗？')) return;
   toast('正在检测协议…');
-  const result = await api('detect_protocol', url, key, model);
+  const result = await api('detect_protocol', url, key, model, editingProvider?.id || null);
   if (!result || !result.ok) return toast(result ? result.error : '协议检测失败', 'err');
   document.getElementById('pm-proxy').checked = !!result.proxy;
   document.getElementById('pm-wire').value = 'responses';
@@ -2978,6 +3337,7 @@ async function initPresets() {
   window._presetData = data.presets;
 }
 function openProviderModal(p) {
+  if (providerSwitching || providerSaving) return;
   editingProvider = p || null;
   const builtinOfficial = p && p.id === 'openai';
   document.getElementById('pm-title').textContent = p ? '编辑供应商' : '添加供应商';
@@ -2987,7 +3347,7 @@ function openProviderModal(p) {
   document.getElementById('pm-name').value = p ? p.name : '';
   document.getElementById('pm-url').value = p ? (p.base_url||'') : '';
   document.getElementById('pm-key').value = '';
-  document.getElementById('pm-key').placeholder = p && p.has_api_key ? '已保存；留空表示不修改' : '请输入 API Key';
+  document.getElementById('pm-key').placeholder = p?.secret_unavailable ? '读取失败；留空保留原记录，或重新输入密钥' : p && p.has_api_key ? '已保存；留空表示不修改' : '请输入 API Key';
   document.getElementById('pm-model').value = p ? (p.model||'') : '';
   document.getElementById('pm-effort').value = p ? (p.reasoning_effort||'') : '';
   document.getElementById('pm-wire').value = p ? (p.wire_api||'responses') : 'responses';
@@ -3000,9 +3360,14 @@ function openProviderModal(p) {
   // 编辑时显示当前模型（单 chip），点"获取模型"后会刷新为完整列表
   renderModelChips(p && p.model ? [p.model] : [], p ? p.model : '');
   toggleUpstream();
+  beginProviderStyle('pm-style', p?.card_css);
+  document.querySelector('#pm-style details').open=!!p?.card_css;
+  renderProviderStylePreview('pm-style','pm-name');
   document.getElementById('provider-modal').classList.add('show');
 }
 function closeProviderModal() {
+  if (providerSaving) return;
+  providerStyleDrafts.delete('pm-style');
   document.getElementById('provider-modal').classList.remove('show');
 }
 document.getElementById('provider-modal').addEventListener('click', event => {
@@ -3034,10 +3399,11 @@ function toggleUpstream() {
 async function saveProvider() {
   const name = document.getElementById('pm-name').value.trim();
   if (!name) return toast('名称不能为空', 'err');
-  let id = editingProvider ? editingProvider.id :
-    (document.getElementById('pm-name').value.trim().toLowerCase().replace(/[^a-z0-9_]/g,''));
+  if (providerSaving || providerSwitching) return;
+  if (providerStyleDrafts.get('pm-style')?.loading) return toast('请等待 CSS 文件读取完成', 'notice');
   const data = {
-    id: id || ('relay' + Date.now() % 100000),
+    id: editingProvider?.id || '',
+    card_css: providerStyleDrafts.get('pm-style')?.css || '',
     name,
     kind: document.getElementById('pm-kind').value,
     base_url: document.getElementById('pm-url').value.trim(),
@@ -3048,11 +3414,16 @@ async function saveProvider() {
     proxy: document.getElementById('pm-proxy').checked,
     upstream_base: document.getElementById('pm-upstream').value.trim(),
   };
-  const r = await api('save_provider', data);
-  if (!r || !r.ok) return toast(r ? r.error : '保存失败', 'err');
-  closeProviderModal();
-  toast('已保存', 'ok');
-  loadProviders();
+  providerSaving=true;document.getElementById('pm-save').disabled=true;
+  try {
+    const r = await api('save_provider', data);
+    if (!r || !r.ok) return toast(r ? r.error : '保存失败', 'err');
+    providerSaving=false;
+    closeProviderModal();
+    selectedProviderId=r.id;
+    toast('已保存；选择“切换到选中”或“重新应用”后更新通道配置', 'ok');
+    await loadProviders();
+  } finally {providerSaving=false;document.getElementById('pm-save').disabled=false;}
 }
 
 /* ---------- 会话 ---------- */
@@ -3890,13 +4261,213 @@ async function loadTranslationSettings() {
   document.getElementById('translation-interface').checked = data.translate_interface !== false;
   document.getElementById('translation-messages').checked = data.translate_messages !== false;
   document.getElementById('translation-input').checked = data.translate_input !== false;
+  document.getElementById('claude-enter').checked = data.intercept_enter !== false;
   document.getElementById('translation-status').textContent = data.connected
-    ? '翻译连接正常；右下角控件可用。'
+    ? '翻译连接正常；浮窗可用，可拖动调整位置。'
     : data.running ? '翻译连接中断，正在自动重连…' : (data.last_error || '翻译按钮还没有启动。');
 }
 function translationProviderChanged() {
   const item = translationProviders.find(x => x.id === document.getElementById('translation-provider').value);
   if (item && !document.getElementById('translation-model').value.trim()) document.getElementById('translation-model').placeholder = item.model || '使用通道默认模型';
+}
+let claudeProviderRows = [];
+let claudeChannelCurrent = 'claude-official';
+let claudeChannelSwitching = false;
+let claudeProviderSelected = '';
+let claudeProviderChecking = false;
+let claudeProviderImporting = false;
+let claudeProviderUpdating = false;
+function claudeProviderBusy() {
+  return claudeChannelSwitching || claudeProviderChecking || claudeProviderImporting || claudeProviderUpdating;
+}
+function claudeChannelStatus(message) {
+  const status = document.getElementById('claude-channel-status');
+  status.textContent = message || '';
+  status.hidden = !message;
+}
+function syncClaudeProviderActions() {
+  const provider = claudeProviderRows.find(p => p.id === claudeProviderSelected);
+  const busy = claudeProviderBusy();
+  const cssImport=document.getElementById('claude-provider-css-import');
+  const draftOpen=!document.getElementById('claude-provider-editor').hidden;
+  cssImport.disabled=busy || (!draftOpen && (!provider || provider.official));
+  cssImport.title=draftOpen?'为正在编辑的供应商导入卡片 CSS':provider && !provider.official?'为“'+provider.name+'”导入卡片 CSS':'请先选择一个第三方供应商';
+  for (const id of ['claude-provider-add','claude-provider-import','claude-provider-save']) document.getElementById(id).disabled=busy;
+  document.querySelectorAll('#claude-provider-list .p-edit').forEach(button=>button.disabled=busy);
+  document.getElementById('claude-provider-import').textContent=claudeProviderImporting?'正在导入…':'从 Claude 本地配置导入';
+  for (const action of ['check','edit','delete','switch']) {
+    document.getElementById('claude-provider-'+action).disabled = busy || !provider ||
+      (action !== 'switch' && provider.official) || (action === 'delete' && provider.current);
+  }
+  document.getElementById('claude-provider-action-hint').textContent = provider
+    ? '已选：' + provider.name + (provider.current ? '（当前通道）' : '') : '选择一个通道后可进行操作';
+  document.getElementById('claude-provider-switch').textContent = claudeChannelSwitching ? '正在切换…' : provider?.current ? '重新应用 →' : '切换到选中 →';
+}
+function selectClaudeProvider(id) {
+  if (claudeProviderBusy()) return;
+  claudeProviderSelected = id;
+  document.querySelectorAll('#claude-provider-list .p-item').forEach(row => {
+    row.classList.toggle('selected', row.dataset.providerId === id);
+    row.setAttribute('aria-pressed', String(row.dataset.providerId === id));
+  });
+  syncClaudeProviderActions();
+}
+async function loadClaudeProviders() {
+  const data = await api('get_claude_providers');
+  if (!data || data.ok === false) return;
+  claudeProviderRows = data.providers || [];
+  claudeChannelCurrent = data.current_id;
+  const current = claudeProviderRows.find(p => p.current);
+  if (!claudeProviderRows.some(p => p.id === claudeProviderSelected)) claudeProviderSelected = current?.id || claudeProviderRows[0]?.id || '';
+  document.getElementById('claude-active-provider').textContent = current?.name || '现有第三方配置';
+  document.getElementById('claude-active-mode').textContent = current?.official ? '官方账户' : '第三方网关';
+  document.getElementById('claude-active-auth').textContent = current ? (current.official ? '账户登录' : current.auth_scheme || 'x-api-key') : '由现有配置管理';
+  document.getElementById('claude-active-models').textContent = current ? (current.official ? 'Claude 管理' : current.models?.trim() ? '指定模型' : '自动发现') : '由现有配置管理';
+  document.getElementById('claude-home-channel').textContent = '当前通道：' + (current?.name || '现有第三方配置');
+  const gateway = claudeChannelCurrent !== 'claude-official';
+  document.getElementById('claude-launch-copy').textContent = gateway ? '打开当前供应商通道。第三方模式暂不支持页面翻译。' : '打开后自动开启页面翻译。';
+    if (selectedToolboxApp === 'claude') document.getElementById('translation-apply').disabled = gateway;
+  document.getElementById('claude-gateway-translation-note').hidden = !gateway;
+  const list = document.getElementById('claude-provider-list');
+  list.replaceChildren();
+  for (const provider of claudeProviderRows) {
+    const row = document.createElement('div'); row.className = 'p-item' + (provider.id === claudeProviderSelected ? ' selected' : '');
+    row.dataset.providerId = provider.id; row.dataset.kind = provider.official ? 'official' : 'relay';
+    row.tabIndex = 0; row.setAttribute('role','button'); row.setAttribute('aria-pressed', String(provider.id === claudeProviderSelected));
+    row.onclick = () => selectClaudeProvider(provider.id);
+    row.onkeydown = event => {if (event.target === row && ['Enter',' '].includes(event.key)) {event.preventDefault();selectClaudeProvider(provider.id);}};
+    const element = (tag, className, text) => {const node=document.createElement(tag);node.className=className;if(text!==undefined)node.textContent=text;return node;};
+    const mark = element('div','provider-mark',provider.official ? 'C' : (provider.name || '?').trim().slice(0,1).toUpperCase());
+    const info = element('div','provider-info');
+    const heading = element('div','provider-name-row');
+    heading.append(element('span','p-name',provider.name),element('span','kind-tag '+row.dataset.kind,provider.official?'官方':'API'));
+    if(provider.current)heading.append(element('span','p-cur','当前'));
+    const description=element('div','provider-route',provider.official?'Claude 官方账户 · 无需 API Key':provider.base_url);
+    description.title=description.textContent;info.append(heading,description);
+    row.append(mark,info,element('span','selection-mark'));
+    if(!provider.official){const edit=element('button','btn sm ghost p-edit','✎');edit.title='编辑供应商';edit.disabled=claudeProviderBusy();edit.onclick=event=>{event.stopPropagation();editClaudeProvider(provider.id);};row.append(edit);}
+    applyProviderCss(row, provider.card_css);
+    list.append(row);
+  }
+  syncClaudeProviderActions();
+}
+function closeClaudeProviderEditor() {
+  if (claudeProviderUpdating) return;
+  document.getElementById('claude-provider-editor').hidden=true;
+  providerStyleDrafts.delete('claude-provider-style');
+  syncClaudeProviderActions();
+}
+function editClaudeProvider(id) {
+  if (claudeProviderBusy()) return;
+  const provider = claudeProviderRows.find(p=>p.id===id);
+  document.getElementById('claude-provider-editor-title').textContent = provider ? '编辑供应商' : '添加供应商';
+  for (const [field,value] of Object.entries({id:provider?.id||'',name:provider?.name||'',url:provider?.base_url||'',key:'',auth:provider?.auth_scheme||'x-api-key',models:provider?.models||''})) document.getElementById('claude-provider-'+field).value=value;
+  document.getElementById('claude-provider-key').placeholder = provider?.has_key ? '已保存 Key；留空保留' : '保存在 Windows DPAPI 中';
+  beginProviderStyle('claude-provider-style', provider?.card_css);
+  document.querySelector('#claude-provider-style details').open=!!provider?.card_css;
+  renderProviderStylePreview('claude-provider-style','claude-provider-name');
+  document.getElementById('claude-provider-editor').hidden=false;
+  document.getElementById('claude-provider-name').focus();
+  syncClaudeProviderActions();
+}
+async function saveClaudeProvider() {
+  if (claudeProviderBusy()) return;
+  if (providerStyleDrafts.get('claude-provider-style')?.loading) return toast('请等待 CSS 文件读取完成', 'notice');
+  claudeProviderUpdating=true;syncClaudeProviderActions();
+  try {
+    const result=await api('save_claude_provider',{card_css:providerStyleDrafts.get('claude-provider-style')?.css || '',id:document.getElementById('claude-provider-id').value,name:document.getElementById('claude-provider-name').value,base_url:document.getElementById('claude-provider-url').value,api_key:document.getElementById('claude-provider-key').value,auth_scheme:document.getElementById('claude-provider-auth').value,models:document.getElementById('claude-provider-models').value});
+    if(!result?.ok)return toast(result?.error||'保存失败','err');
+    document.getElementById('claude-provider-key').value='';
+    document.getElementById('claude-provider-editor').hidden=true;
+    claudeChannelStatus(result.message);
+    claudeProviderSelected=result.id;
+    await loadClaudeProviders();
+  } finally {claudeProviderUpdating=false;syncClaudeProviderActions();}
+}
+function renderClaudeImportReport(items) {
+  const details=document.getElementById('claude-import-report');
+  const list=details.querySelector('ul');list.replaceChildren();
+  const labels={imported:'已导入',duplicates:'重复',skipped:'跳过',failed:'无效'};
+  for (const item of items || []) {
+    const row=document.createElement('li');
+    row.textContent=`${item.name} · ${labels[item.status] || '结果'}：${item.message}`;
+    list.append(row);
+  }
+  details.hidden=!list.childElementCount;
+  details.open=(items || []).some(item=>item.status==='failed' || item.status==='skipped');
+}
+async function importClaudeProviders(button) {
+  if (claudeProviderBusy()) return;
+  claudeProviderImporting=true;syncClaudeProviderActions();renderClaudeImportReport([]);
+  claudeChannelStatus('正在读取并检查 Claude 本地供应商配置…');
+  try {
+    const result=await api('import_claude_providers');
+    claudeChannelStatus(result?.message||result?.error||'导入失败；请重试');
+    if(result?.ok){
+      renderClaudeImportReport(result.items);
+      if(result.imported_ids?.length)claudeProviderSelected=result.imported_ids[0];
+      await loadClaudeProviders();
+    }
+  } finally {claudeProviderImporting=false;syncClaudeProviderActions();}
+}
+async function deleteClaudeProvider(id) {
+  if(claudeProviderBusy()||!confirm('删除这个保存的供应商？'))return;
+  claudeProviderUpdating=true;syncClaudeProviderActions();
+  try {
+    const result=await api('delete_claude_provider',id);
+    if(!result?.ok)return toast(result?.error||'删除失败','err');
+    await loadClaudeProviders();
+  } finally {claudeProviderUpdating=false;syncClaudeProviderActions();}
+}
+async function checkClaudeProvider(id,button) {
+  if(claudeProviderBusy())return;
+  claudeProviderChecking=true;syncClaudeProviderActions();claudeChannelStatus('正在检查已保存的网关连接…');
+  try {const result=await api('test_claude_provider',id);claudeChannelStatus(result?.message||result?.error||'检查失败');}
+  finally {claudeProviderChecking=false;syncClaudeProviderActions();}
+}
+async function switchClaudeProvider(id) {
+  if(claudeProviderBusy()||!confirm('Claude 将完全关闭并重启，请先保存草稿并结束正在运行的任务。官方和第三方会话独立保存。继续切换？'))return;
+  claudeChannelSwitching=true;syncClaudeProviderActions();
+  claudeChannelStatus('正在备份、切换并重启 Claude…');
+  try {const result=await api('switch_claude_provider',id);claudeChannelStatus(result?.message||result?.error||'切换失败');}
+  finally {claudeChannelSwitching=false;await loadClaudeProviders();}
+}
+
+async function launchClaudeHub() {
+  const button = document.getElementById('claude-hub-button');
+  const status = document.getElementById('claude-hub-status');
+  status.hidden = false;
+  if (button.disabled) return;
+  button.disabled = true; button.textContent = '正在打开…';
+  status.textContent = '正在打开 Claude 并接入翻译…';
+  try {
+    const result = await api('launch_claude_hub', {...readTranslationForm(), intercept_enter: document.getElementById('claude-enter').checked});
+    status.textContent = result?.message || result?.error || '无法打开 Claude';
+    document.getElementById('claude-translation-status').textContent = status.textContent;
+    if (!result?.ok) toast(status.textContent, 'err', 6000);
+  } finally {
+    button.disabled = false; button.textContent = '打开 Claude';
+  }
+}
+async function openClaudeTranslation(){
+  const button=document.getElementById('translation-apply'),status=document.getElementById('claude-translation-status');
+  if(button.disabled)return;button.disabled=true;status.textContent='正在接入 Claude 页面…';
+  try{
+    const result=await api('open_claude_translation',{...readTranslationForm(),intercept_enter:document.getElementById('claude-enter').checked});
+    status.textContent=result?.message||result?.error||'无法启动 Claude 翻译';
+  }finally{button.disabled=selectedToolboxApp==='claude' && claudeChannelCurrent!=='claude-official';}
+}
+async function closeClaudeTranslation(){
+  const result=await api('stop_claude_translation');
+  const status=document.getElementById('claude-translation-status');
+  if(!result?.ok){status.textContent=result?.error||'无法确认翻译已关闭，请重试。';toast(status.textContent,'err');return;}
+  status.textContent='Claude 翻译已关闭，回车恢复原行为。';
+}
+function applySelectedTranslation() {
+  return selectedToolboxApp === 'claude' ? openClaudeTranslation() : applySurfaceTranslation();
+}
+function stopSelectedTranslation() {
+  return selectedToolboxApp === 'claude' ? closeClaudeTranslation() : stopSurfaceTranslation();
 }
 function readTranslationForm() {
   return {
@@ -3906,17 +4477,18 @@ function readTranslationForm() {
     translate_interface: document.getElementById('translation-interface').checked,
     translate_messages: document.getElementById('translation-messages').checked,
     translate_input: document.getElementById('translation-input').checked,
+    intercept_enter: document.getElementById('claude-enter').checked,
     port: 9229
   };
 }
 async function saveSurfaceTranslationSettings() {
-  const status = document.getElementById('translation-status');
+  const status = document.getElementById(selectedToolboxApp === 'claude' ? 'claude-translation-status' : 'translation-status');
   const result = await api('save_surface_translation_settings', readTranslationForm());
   if (!result || !result.ok) { status.textContent = result ? result.error : '保存失败'; return toast(status.textContent, 'err'); }
-  status.textContent = result.message; toast(result.message, 'ok');
+  status.textContent = '翻译设置已保存；应用到当前窗口后生效。'; toast(status.textContent, 'ok');
 }
 async function applySurfaceTranslation() {
-  if (!communityExperiments.surface_translation) return toast('请先勾选“显示右下角翻译按钮”', 'notice');
+  if (!communityExperiments.surface_translation) return toast('请先开启“中文翻译”', 'notice');
   const status = document.getElementById('translation-status');
   status.textContent = '正在更新翻译设置…';
   const result = await api('apply_surface_translation', readTranslationForm(), false);
@@ -3932,14 +4504,15 @@ async function stopSurfaceTranslation() {
 /* ---------- 导航 ---------- */
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
+    if (btn.hidden) return;
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(btn.dataset.tab).classList.add('active');
-    document.getElementById('page-title').textContent = btn.dataset.title;
-    document.getElementById('page-subtitle').textContent = btn.dataset.subtitle;
+    updateAppHeading(btn);
     if (btn.dataset.tab === 'tab-appearance') loadBackgroundSettings();
     if (btn.dataset.tab === 'tab-translation') loadTranslationSettings();
+    if (btn.dataset.tab === 'tab-claude-switch') loadClaudeProviders();
     if (btn.dataset.tab === 'tab-diagnostics') loadDiagnostics();
     if (btn.dataset.tab === 'tab-routes' || btn.dataset.tab === 'tab-archive') loadSessions();
   });
@@ -3949,8 +4522,18 @@ function sessionPanelVisible() {
   const active = document.querySelector('.panel.active')?.id;
   return document.visibilityState === 'visible' && (active === 'tab-routes' || active === 'tab-archive');
 }
+async function refreshClaudeTranslationState() {
+  if (claudeChannelCurrent !== 'claude-official') return;
+  const state = await api('get_claude_translation_state');
+  if (!state) return;
+  document.getElementById('claude-translation-status').textContent = state.message;
+  if (!document.getElementById('claude-hub-button').disabled) document.getElementById('claude-hub-status').textContent = state.message;
+}
 async function statusRefreshLoop() {
-  if (document.visibilityState === 'visible') await refreshStatus();
+  if (document.visibilityState === 'visible') {
+    await refreshStatus();
+    if (claudeSupported) await refreshClaudeTranslationState();
+  }
   statusRefreshTimer = setTimeout(statusRefreshLoop, 3000);
 }
 async function sessionRefreshLoop() {
@@ -3964,6 +4547,7 @@ async function sessionRefreshLoop() {
  */
 /* 指针柔光：卡片和可点行跟随鼠标，一帧最多写一次样式 */
 (function trackPointerGlow() {
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   let frame = null;
   let pending = null;
   const GLOW_TARGETS = '.card, .feature-card, .p-item';
@@ -3977,11 +4561,37 @@ async function sessionRefreshLoop() {
     job.el.style.setProperty('--my', (job.y - rect.top).toFixed(1) + 'px');
   }
   document.addEventListener('pointermove', event => {
-    if (!(event.target instanceof Element)) return;
+    if (reducedMotion.matches || !(event.target instanceof Element)) return;
     const el = event.target.closest(GLOW_TARGETS);
     if (!el) return;
     pending = { el, x: event.clientX, y: event.clientY };
     if (frame === null) frame = requestAnimationFrame(paint);
+  }, { passive: true });
+})();
+
+/* 复用侧栏矢量图标，不增加图像下载或持续动画。 */
+(function enhanceFeatureSurfaces() {
+  document.querySelectorAll('.feature-card').forEach(card => {
+    const feature = card.querySelector('[data-feature-toggle]')?.dataset.featureToggle;
+    const icon = card.dataset.featureTab
+      ? document.querySelector(`.tab-btn[data-tab="${card.dataset.featureTab}"] svg`)
+      : document.querySelector(`.tab-btn[data-feature="${feature}"] svg`);
+    if (!icon) return;
+    const symbol = document.createElement('span');
+    symbol.className = 'feature-symbol';symbol.setAttribute('aria-hidden', 'true');
+    symbol.appendChild(icon.cloneNode(true));card.prepend(symbol);
+  });
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  document.addEventListener('click', event => {
+    if (reducedMotion.matches || !(event.target instanceof Element)) return;
+    const button = event.target.closest('.btn, .tab-btn');
+    if (!button || button.disabled || !button.isConnected) return;
+    button.querySelector('.press-feedback')?.remove();
+    const rect = button.getBoundingClientRect(), feedback = document.createElement('span');
+    feedback.className = 'press-feedback';feedback.setAttribute('aria-hidden', 'true');
+    feedback.style.left = (event.detail ? event.clientX - rect.left : rect.width / 2) + 'px';
+    feedback.style.top = (event.detail ? event.clientY - rect.top : rect.height / 2) + 'px';
+    button.appendChild(feedback);setTimeout(() => feedback.remove(), 400);
   }, { passive: true });
 })();
 
@@ -4028,11 +4638,16 @@ async function bootstrapApp() {
   if (bootstrapRetryTimer) clearInterval(bootstrapRetryTimer);
   try {
     const appInfo = await api('get_app_info');
+    if (appInfo?.platform === 'win32' || appInfo?.claude_supported) void precheckNetworkWarning();
     if (appInfo?.version) document.getElementById('app-version').textContent = `PUBLIC BETA · ${appInfo.version}`;
+    claudeSupported = !!appInfo?.claude_supported;
+    document.getElementById('claude-app-button').disabled = !claudeSupported;
+    document.getElementById('claude-app-button').title = claudeSupported ? 'Claude 翻译' : 'Claude 翻译仅支持 Windows';
     if (appInfo?.auth_migration_error) toast(`旧认证配置迁移失败：${appInfo.auth_migration_error}`, 'error', 12000);
     await loadCommunityExperiments();
     await loadBackgroundSettings();
     await loadTranslationSettings();
+    if (claudeSupported) await loadClaudeProviders();
     await initPresets();
     await loadProviders();
     await loadSessions();

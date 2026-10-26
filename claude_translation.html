@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Claude 翻译</title>
+<style>
+:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:#49372f;background:#fff;color-scheme:light}*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;height:100vh;overflow:hidden;padding:6px;border:1px solid #e6d6ca;border-radius:11px;background:linear-gradient(150deg,#fff,#fff8f2);display:flex;flex-direction:column;align-items:flex-end;gap:6px}button,select{font:12px "Segoe UI","Microsoft YaHei",sans-serif;color:inherit;cursor:pointer}button{border:1px solid #e5d7cf;border-radius:7px;background:#fff;height:30px;padding:0 8px;transition:background .14s,transform .14s}button:hover{background:#faeee5}button:active{transform:scale(.97)}button:disabled,select:disabled{opacity:.45;cursor:default}button:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid #edc5b4;outline-offset:1px}.accent{background:#b25a3c;border-color:#b25a3c;color:#fff;box-shadow:0 2px 5px #b25a3c20}.accent:hover{background:#98492f}.dock{width:138px;flex:none;align-self:flex-end}.handle-row{display:flex;align-items:center;height:16px;margin-bottom:3px;gap:3px}.grip{flex:1;cursor:grab;user-select:none;text-align:center;color:#9a8075;font-size:13px;line-height:16px}.grip:active{cursor:grabbing}.icon{width:18px;height:16px;padding:0;border:0;background:transparent;color:#9a8075;font-size:13px}.dot{width:5px;height:5px;border-radius:50%;background:#c8b9ac;flex:none}.dot.preview{background:#b25a3c}.dot.busy,.dot.confirming{background:#dca85b}.dot.error{background:#db6871}.dot.done{background:#4aaf92}.controls{display:grid;grid-template-columns:76px 58px;gap:4px;margin-bottom:4px}.controls:last-child{grid-template-columns:48px 86px;margin-bottom:0}select{width:100%;height:30px;background:#fff;border:1px solid #e5d7cf;border-radius:7px;padding:0 5px}.preview-panel{width:100%;flex:1;min-height:0;overflow:auto;padding:10px}.preview-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.preview-header strong{font-size:14px}.preview-header button{height:24px;padding:0 7px;font-size:11px}#status{font-size:12px;line-height:1.5;color:#897167;margin:0 0 10px;white-space:pre-wrap}#status.error{color:#b84957}label,summary{font-size:12px;color:#856958;margin-bottom:7px}label{display:block}details{margin-bottom:10px}summary{cursor:pointer}textarea{width:100%;height:150px;resize:none;border:1px solid #e6d8d0;border-radius:9px;background:#fffaf6;color:#49372f;padding:10px;font:13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif}textarea:focus{outline:2px solid #f0cfbf;border-color:#c57a5c}#source{height:85px;margin-top:5px}.actions{display:flex;gap:6px;justify-content:flex-end;margin-top:10px}.hint{font-size:11px;line-height:1.5;color:#a38a7e;margin:8px 0 0}.body-mode .actions{display:none}.expanded .dock{border-top:1px solid #efdfd5;padding-top:6px}@media(prefers-reduced-motion:reduce){button{transition:none}}
+.app-label{font-size:10px;font-weight:650;letter-spacing:.1px;color:#98634d;line-height:16px;white-space:nowrap}</style></head><body>
+<section id="preview" class="preview-panel" hidden>
+  <div class="preview-header"><strong id="preview-title">Claude · 译文预览</strong><button id="collapse" onclick="collapsePreview()" title="收起预览并取消待确认发送">收起</button></div>
+  <p id="status" role="status">连接中…</p>
+  <details id="source-details"><summary>原文</summary><textarea id="source" readonly aria-label="原文"></textarea></details>
+  <label id="output-label" for="output">译文 · 可修改</label><textarea id="output" placeholder="译文会显示在这里"></textarea>
+  <div class="actions"><button id="write" onclick="claudeConfirm(false)" disabled>只写入</button><button id="send" class="accent" onclick="claudeConfirm(true)" disabled>写入并发送</button></div>
+  <p class="hint" id="hint">核对后回车确认发送，Shift+回车换行。</p>
+</section>
+<div class="dock" aria-label="Claude 翻译按钮框">
+  <div class="handle-row"><span class="app-label">Claude</span><span id="indicator" class="dot" title="等待翻译"></span><div class="grip pywebview-drag-region" title="拖动 Claude 翻译按钮框" aria-label="拖动 Claude 翻译按钮框">⠿</div><button id="reset" class="icon" onclick="resetPosition()" title="恢复默认位置" aria-label="恢复默认位置">↺</button></div>
+  <div class="controls"><select id="direction" aria-label="选择翻译方向" onchange="changeDirection()"><option value="zh-en">中→英</option><option value="en-zh">英→中</option></select><button id="input" class="accent" onclick="claudeTranslate('input')" title="翻译 Claude 输入框，核对后再发送">翻译</button></div>
+  <div class="controls"><button id="original" onclick="showOriginal()" title="查看上次翻译的原文；Claude 正文保持原样">原文</button><button id="body" class="accent" onclick="claudeTranslate('body')" title="先在 Claude 选中正文，再点击翻译">翻译正文</button></div>
+</div>
+<script>
+let state={phase:'idle'},revision=-1,contentKey='',inFlight=false,confirming=false,expanded=false;
+const el=id=>document.getElementById(id);
+async function call(name,...args){return window.pywebview.api[name](...args);}
+async function setExpanded(value){
+  if(expanded===value)return;
+  const result=await call('set_claude_translation_expanded',value);
+  if(!result.ok)throw new Error(result.error);
+  expanded=value;document.body.classList.toggle('expanded',value);el('preview').hidden=!value;
+}
+async function showError(error){el('status').textContent=String(error);el('status').classList.add('error');await setExpanded(true);}
+async function refresh(){
+  if(inFlight||!window.pywebview?.api)return;inFlight=true;
+  try{const next=await call('get_claude_translation_state');state=next;
+    if(next.revision!==revision){revision=next.revision;
+      const key=JSON.stringify([next.scope,next.source,next.translated]);
+      // Phase updates must preserve the user's edited preview until the next translation.
+      if(key!==contentKey){contentKey=key;el('source').value=next.source||'';el('output').value=next.translated||'';}
+      el('status').textContent=next.message||'';el('status').classList.toggle('error',next.phase==='error');
+      el('indicator').className='dot '+next.phase;el('indicator').title=next.message||'';
+      if(next.direction)el('direction').value=next.direction;
+      if(next.phase==='preview'||next.phase==='error')await setExpanded(true);
+      if(next.phase==='preview'&&next.scope==='input')el('output').focus();
+    }
+    const busy=['busy','confirming'].includes(next.phase)||confirming;
+    for(const id of ['input','body','direction','reset','original','collapse'])el(id).disabled=busy||!next.running;
+    el('original').disabled=busy||!next.running||!next.source;
+    el('input').textContent=next.phase==='busy'?'…':'翻译';
+    el('write').disabled=el('send').disabled=busy||next.phase!=='preview'||next.scope!=='input';
+    el('output').readOnly=next.scope==='body'||busy;
+    el('output-label').textContent=next.scope==='body'?'正文译文':'译文 · 可修改';
+    el('hint').textContent=next.scope==='body'?'选中正文的译文；Claude 原文保持原样。':'核对后回车确认发送，Shift+回车换行。';
+    document.body.classList.toggle('body-mode',next.scope==='body');
+  }catch(error){await showError(error);}finally{inFlight=false;}
+}
+async function claudeTranslate(scope){try{const result=await call('translate_claude_text',scope);if(!result.ok)throw new Error(result.error);el('source-details').open=false;await refresh();}catch(error){await showError(error);}}
+async function changeDirection(){try{const result=await call('set_claude_translation_direction',el('direction').value);if(!result.ok)throw new Error(result.error);await refresh();}catch(error){el('direction').value=state.direction||'zh-en';await showError(error);}}
+async function showOriginal(){el('source-details').open=true;await setExpanded(true);}
+async function collapsePreview(){try{const result=await call('dismiss_claude_translation_preview');if(!result.ok)throw new Error(result.error);await setExpanded(false);await refresh();}catch(error){await showError(error);}}
+async function resetPosition(){try{const result=await call('reset_claude_translation_position');if(!result.ok)throw new Error(result.error);expanded=false;document.body.classList.remove('expanded');el('preview').hidden=true;await refresh();}catch(error){await showError(error);}}
+async function claudeConfirm(send){
+  if(confirming||state.phase!=='preview'||state.scope!=='input')return;
+  confirming=true;el('send').disabled=el('write').disabled=true;
+  try{const result=await call('confirm_claude_translation',state.token,el('output').value,send);if(!result.ok)throw new Error(result.error);el('status').textContent=result.message;}
+  catch(error){await showError(error);}finally{confirming=false;await refresh();}
+}
+document.addEventListener('keydown',event=>{
+  if(event.key!=='Enter'||event.shiftKey||event.ctrlKey||event.altKey||event.metaKey||event.isComposing||event.keyCode===229||event.repeat)return;
+  // Toolbar buttons and the direction selector retain their native keyboard behaviour.
+  if(event.target!==el('output'))return;
+  if(state.scope==='input'&&state.phase==='preview'){event.preventDefault();claudeConfirm(true);}
+  else if(['busy','confirming'].includes(state.phase)){event.preventDefault();}
+});
+window.addEventListener('pywebviewready',refresh);setInterval(refresh,350);
+</script></body></html>

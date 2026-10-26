@@ -2,13 +2,13 @@
 
 **为指定 Codex 会话选择不同模型通道，而不改变其他会话。**
 
-Windows 本地辅助工具。它把“全局默认通道”和“已有会话的单独通道”分开管理：新会话按全局默认创建；已存在的会话可以按需固定到某个已配置的供应商、模型和思考强度，也可以手动同步回当前全局默认。
+Windows 与 macOS 本地辅助工具。它把“全局默认通道”和“已有会话的单独通道”分开管理：新会话按全局默认创建；已存在的会话可以按需固定到某个已配置的供应商、模型和思考强度，也可以手动同步回当前全局默认。
 
-> **Codex Toolbox for Windows**: per-session provider, model, and reasoning selection for existing Codex tasks, plus provider health checks and a local customizable background experiment.
+> **Codex Toolbox for Windows and macOS**: provider management, per-session routing and surface translation. Claude Desktop integration is Windows-only; the macOS build is for testing.
 
-[下载 Windows 测试版](https://github.com/dgj482/codex-toolbox/releases/tag/v0.1.12-beta) · [查看使用手册](docs/使用手册.md) · [报告问题](https://github.com/dgj482/codex-toolbox/issues/new?template=bug_report.yml)
+[下载 Windows / macOS 测试版](https://github.com/dgj482/codex-toolbox/releases) · [查看使用手册](docs/使用手册.md) · [macOS 安装说明](docs/macOS使用说明.md) · [报告问题](https://github.com/dgj482/codex-toolbox/issues/new?template=bug_report.yml)
 
-> Windows x64 测试版。社区项目，非 OpenAI 官方产品，也不代表 OpenAI 认可。会话路由与本地外观均为默认关闭的非官方实验，Codex 更新后可能失效。
+> Windows x64 与 macOS 15+（Apple Silicon / Intel）测试版。macOS DMG 内置运行依赖，不附带源码工程；未经过 Developer ID 签名和 Apple 公证，完整桌面功能仍需实机验收。社区项目，非 OpenAI 官方产品，也不代表 OpenAI 认可。会话路由与本地外观均为默认关闭的非官方实验，Codex 更新后可能失效。
 
 | 适合谁 | 能解决什么 |
 | --- | --- |
@@ -68,6 +68,10 @@ Codex 的全局通道适合决定**之后新建的会话**，但不适合管理�
 - API Key 只在工具箱后端使用，不注入 Codex 页面。关闭功能会移除覆盖层；首次启用需要把 Codex 以本机临时调试端口重新启动。
 - 这是随 Codex 页面结构变化而可能失效的非官方 Windows 实验，不是官方插件或官方语言设置。
 
+### Claude 桌面翻译 · Windows
+
+Claude 复用 Codex 的页面内可拖动按钮框与翻译引擎，支持界面文字、回答正文原位翻译、原文恢复，以及双向输入翻译、预览确认和回车发送。首次接入需由用户手动启用 Claude 官方 Developer Mode；详见 [Claude 桌面翻译说明](docs/Claude桌面翻译.md)。
+
 ### 全局通道与供应商接入
 
 - 管理新会话的全局默认通道。
@@ -108,7 +112,7 @@ Codex 的全局通道适合决定**之后新建的会话**，但不适合管理�
 - Windows 10/11 x64，已安装 Codex 桌面版和 Microsoft Edge WebView2 Runtime。
 - 会话路由、归档、恢复与侧栏残留修复前，必须完全退出 Codex，包括托盘残留进程。
 - 本地外观实验需要 PowerShell 7 (`pwsh`)；缺失时工具箱会安全禁用该实验，不影响其他功能。
-- 当前仅发布 Windows 测试包，macOS 尚未作为正式发布目标。
+- macOS 已加入源码适配和本机构建脚本，参见 [macOS 使用说明](docs/macOS使用说明.md)。目前未完成 Mac 实机验收，未提供已验证的 `.app` 发布包。
 
 ## 安全与责任
 

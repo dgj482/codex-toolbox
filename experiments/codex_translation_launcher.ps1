@@ -12,6 +12,7 @@ $OutputEncoding = $utf8
 . (Join-Path $PSScriptRoot "codex_package_activation.ps1")
 
 function Get-CodexExecutable {
+    if ($IsMacOS) { return Resolve-MacCodexExecutable -Configured $CodexExecutable }
     if ($CodexExecutable) {
         $path = [IO.Path]::GetFullPath($CodexExecutable)
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "指定的 Codex 程序不存在：$path" }
@@ -26,6 +27,7 @@ function Get-CodexExecutable {
 }
 
 function Get-CodexProcesses([string]$Expected) {
+    if ($IsMacOS) { return Get-MacCodexProcesses -Expected $Expected }
     Get-CimInstance Win32_Process | Where-Object {
         $_.Name -eq "ChatGPT.exe" -and $_.ExecutablePath -and $_.ExecutablePath -ieq $Expected
     }

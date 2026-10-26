@@ -6,6 +6,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import shutil
 import unittest
 import urllib.error
 from pathlib import Path
@@ -40,6 +41,7 @@ class SurfaceTranslationTests(unittest.TestCase):
         self.assertNotIn("port: 9230", ui_source)
         self.assertNotIn("[int]$Port = 9230", launcher_source)
 
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell 7 is optional for core features")
     def test_translation_launcher_has_valid_powershell_syntax(self):
         launcher = Path(__file__).resolve().parents[1] / "experiments" / "codex_translation_launcher.ps1"
         command = (
@@ -48,7 +50,7 @@ class SurfaceTranslationTests(unittest.TestCase):
             "if($errors.Count){$errors | ForEach-Object {$_.Message}; exit 1}"
         )
         result = subprocess.run(
-            ["pwsh", "-NoProfile", "-Command", command],
+            ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; " + command],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -474,7 +476,8 @@ class SurfaceTranslationTests(unittest.TestCase):
         self.assertIn('data-feature-toggle="session_archive"', source)
         self.assertIn('data-feature-toggle="local_appearance"', source)
         self.assertIn('data-feature-toggle="surface_translation"', source)
-        self.assertIn('data-feature-toggle="diagnostics"', source)
+        self.assertNotIn('data-feature-toggle="diagnostics"', source)
+        self.assertIn('data-tab="tab-diagnostics" data-title="排障信息"', source)
         self.assertIn("button.hidden = !communityExperiments[button.dataset.feature]", source)
         self.assertNotIn("launchCodexWithSavedBackground", source)
         self.assertNotIn("startLiveBackgroundPreview", source)

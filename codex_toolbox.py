@@ -40,10 +40,11 @@ def _app_dir():
     return secret_store.app_data_dir()
 
 
-CONFIG = os.path.expanduser(r"~\.codex\config.toml")
-STATE_DB = os.path.expanduser(r"~\.codex\state_5.sqlite")
-CATALOG_DB = os.path.expanduser(r"~\.codex\sqlite\codex-dev.db")
-SESSION_INDEX_FILE = os.path.expanduser(r"~\.codex\session_index.jsonl")
+CODEX_DATA_DIR = os.path.expanduser(os.environ.get("CODEX_HOME") or os.path.join("~", ".codex"))
+CONFIG = os.path.join(CODEX_DATA_DIR, "config.toml")
+STATE_DB = os.path.join(CODEX_DATA_DIR, "state_5.sqlite")
+CATALOG_DB = os.path.join(CODEX_DATA_DIR, "sqlite", "codex-dev.db")
+SESSION_INDEX_FILE = os.path.join(CODEX_DATA_DIR, "session_index.jsonl")
 BAK_DIR = os.path.join(_app_dir(), "archive_backups")
 PROVIDERS_FILE = os.path.join(_app_dir(), "providers.json")
 THREAD_ROUTES_FILE = os.path.join(_app_dir(), "thread_routes.json")
@@ -112,7 +113,7 @@ MODEL_PRESETS = [
     "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k",
     "abab6.5s-chat", "abab6.5g-chat",
     "deepseek-ai/DeepSeek-V3", "deepseek-ai/DeepSeek-R1",
-    "gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna",
+    "gpt-6.1-sol", "gpt-6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna",
     "gemini-2.5-pro", "gemini-2.5-flash",
     "grok-4", "grok-3",
     "mistral-large-latest", "codestral-latest",
@@ -175,7 +176,7 @@ PRESETS = [
      "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct", "models": ["Qwen/Qwen3-Coder-480B-A35B-Instruct", "deepseek-ai/DeepSeek-V3.2", "ZhipuAI/GLM-4.7"],
      "wire_api": "responses", "proxy": True},
     {"label": "Google Gemini（OpenAI 兼容）", "name": "Google Gemini", "kind": "direct", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-     "model": "gemini-2.5-flash", "models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+     "model": "gemini-2.5-flash", "models": ["gemini-2.5-pro", "gemini-2.5-flash"],
      "wire_api": "responses", "proxy": True},
     {"label": "xAI Grok", "name": "xAI Grok", "kind": "direct", "base_url": "https://api.x.ai/v1",
      "model": "grok-4", "models": ["grok-4", "grok-3", "grok-3-mini"],
@@ -212,6 +213,19 @@ def codex_process_state():
     """
     try:
         processes = []
+        if sys.platform == "darwin":
+            out = subprocess.run(["/bin/ps", "-axo", "pid=,comm="], capture_output=True,
+                                 text=True, encoding="utf-8", errors="replace", timeout=10)
+            if out.returncode:
+                return {"state": "unknown", "processes": [], "error": "ps failed"}
+            for line in out.stdout.splitlines():
+                fields = line.strip().split(None, 1)
+                if len(fields) != 2:
+                    continue
+                pid, path = fields
+                if os.path.basename(path).lower() == "codex" or "/Codex.app/Contents/" in path:
+                    processes.append({"name": os.path.basename(path), "pid": int(pid), "path": path})
+            return {"state": "running" if processes else "stopped", "processes": processes, "error": ""}
         for image_name in ("Codex.exe", "ChatGPT.exe"):
             out = subprocess.run(
                 ["tasklist", "/FI", f"IMAGENAME eq {image_name}", "/FO", "CSV", "/NH"],
@@ -346,8 +360,10 @@ def load_providers():
             needs_rewrite = data.get("version") != 2
             for raw in data.get("providers", []):
                 item = dict(raw)
-                encrypted = item.pop("api_key_dpapi", "")
-                encrypted_proxy_token = item.pop("proxy_token_dpapi", "")
+                item.pop("_unreadable_secrets", None)
+                unreadable = {}
+                encrypted = item.pop("api_key_keychain", "") or item.pop("api_key_dpapi", "")
+                encrypted_proxy_token = item.pop("proxy_token_keychain", "") or item.pop("proxy_token_dpapi", "")
                 plaintext = item.get("api_key", "")
                 plaintext_proxy_token = item.get("proxy_token", "")
                 if encrypted:
@@ -355,6 +371,8 @@ def load_providers():
                         item["api_key"] = secret_store.unprotect_secret(encrypted)
                     except Exception:
                         item["api_key"] = ""
+                        field = "api_key_keychain" if raw.get("api_key_keychain") else "api_key_dpapi"
+                        unreadable[field] = encrypted
                 elif plaintext:
                     plaintext_migration = True
                 if encrypted_proxy_token:
@@ -362,9 +380,13 @@ def load_providers():
                         item["proxy_token"] = secret_store.unprotect_secret(encrypted_proxy_token)
                     except Exception:
                         item["proxy_token"] = ""
+                        field = "proxy_token_keychain" if raw.get("proxy_token_keychain") else "proxy_token_dpapi"
+                        unreadable[field] = encrypted_proxy_token
                 elif plaintext_proxy_token:
                     plaintext_migration = True
-                if item.get("proxy") and not item.get("proxy_token"):
+                if unreadable:
+                    item["_unreadable_secrets"] = unreadable
+                if item.get("proxy") and not item.get("proxy_token") and not encrypted_proxy_token:
                     item["proxy_token"] = secrets.token_urlsafe(32)
                     needs_rewrite = True
                 provs.append(normalize_provider(item))
@@ -378,8 +400,9 @@ def load_providers():
             if plaintext_migration or needs_rewrite:
                 save_providers(provs)
             return provs
-        except Exception:
-            pass
+        except Exception as error:
+            # A failed read or Keychain migration must never overwrite the existing file.
+            raise RuntimeError("供应商配置读取或密钥迁移失败，原文件已保留；请检查系统密钥访问权限。") from error
     provs = []
     try:
         provs.extend(_providers_from_config())
@@ -399,12 +422,18 @@ def save_providers(provs):
         item = dict(provider)
         secret = item.pop("api_key", "")
         proxy_token = item.pop("proxy_token", "")
-        item.pop("api_key_dpapi", None)
-        item.pop("proxy_token_dpapi", None)
+        unreadable = item.pop("_unreadable_secrets", {})
+        for field in ("api_key_dpapi", "proxy_token_dpapi", "api_key_keychain", "proxy_token_keychain"):
+            item.pop(field, None)
         if secret:
-            item["api_key_dpapi"] = secret_store.protect_secret(secret)
+            item[secret_store.secret_field("api_key")] = secret_store.protect_secret(secret)
         if proxy_token:
-            item["proxy_token_dpapi"] = secret_store.protect_secret(proxy_token)
+            item[secret_store.secret_field("proxy_token")] = secret_store.protect_secret(proxy_token)
+        for field, reference in unreadable.items():
+            if field in {"api_key_dpapi", "api_key_keychain"} and not secret:
+                item[field] = reference
+            if field in {"proxy_token_dpapi", "proxy_token_keychain"} and not proxy_token:
+                item[field] = reference
         serialized.append(item)
     tmp = PROVIDERS_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -661,6 +690,13 @@ def apply_provider(pid, proxy_url=None):
             content = f.read()
     except FileNotFoundError:
         raise RuntimeError("未找到 Codex 配置。请先安装、登录并至少启动一次 Codex。")
+    # 活跃官方通道的配置是实际选择；离开时记录，避免旧的供应商记录回写旧模型。
+    current = tomllib.loads(content)
+    if current.get("model_provider", OFFICIAL_ID) == OFFICIAL_ID and current.get("model"):
+        official = next((item for item in provs if item["id"] == OFFICIAL_ID), None)
+        if official is not None and not official.get("model_explicit") and official.get("model") != current["model"]:
+            official["model"] = current["model"]
+            save_providers(provs)
     provider_line = f"model_provider = {_toml_string(pid)}"
     if re.search(r'^model_provider\s*=', content, re.M):
         content = re.sub(r'^model_provider\s*=.*$', provider_line, content, count=1, flags=re.M)
@@ -696,6 +732,8 @@ def apply_provider(pid, proxy_url=None):
     with open(tmp, "w", encoding="utf-8", newline="\n") as f:
         f.write(content)
     os.replace(tmp, CONFIG)
+    if pid == OFFICIAL_ID and p.pop("model_explicit", False):
+        save_providers(provs)
     prune_backups()
     return p["name"]
 
@@ -971,6 +1009,15 @@ def _find_codex_executable():
     不允许被外部程序直接执行。若检测到用户安装的官方 ``@openai/codex``
     CLI，优先使用其 ``codex.cmd``，它和桌面端使用同一 ``~/.codex`` 数据目录。
     """
+    if sys.platform == "darwin":
+        candidates = [os.environ.get("CODEX_EXECUTABLE"), shutil.which("codex"),
+                      "/opt/homebrew/bin/codex", "/usr/local/bin/codex",
+                      "/Applications/Codex.app/Contents/Resources/codex",
+                      os.path.expanduser("~/Applications/Codex.app/Contents/Resources/codex")]
+        for path in candidates:
+            if path and os.path.isfile(path) and os.access(path, os.X_OK):
+                return path
+        raise RuntimeError("未找到 Codex app-server；请安装 Codex 桌面版或将 Codex CLI 加入 PATH。")
     app_data = os.environ.get("APPDATA", "")
     cli_candidates = []
     if app_data:

@@ -28,6 +28,7 @@ _PROTECTED = re.compile(
     r"(?:[A-Za-z]:\\[^\r\n\t<>|\"]+)|"
     r"(?:/(?:[\w.@+-]+/)+[\w.@+-]+)|"
     r"@[\w.-]+|\b(?i:(?:gpt-\d[\w.-]*|o[134](?:-[\w.-]+)?|qwen[\w.-]*|claude[\w.-]*|gemini[\w.-]*)(?:\s+(?:sol|astra|luna|terra))?)\b|"
+    r"\b(?i:(?:Sonnet|Opus|Haiku|Mythos|Fable)(?:\s+\d[\w.-]*)?)\b|"
     r"\b(?:Codex|ChatGPT|OpenAI|Git|PowerShell|PyCharm|API|URL|MCP|(?i:models?))\b",
     re.MULTILINE,
 )

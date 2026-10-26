@@ -51,7 +51,7 @@ try {
     Copy-Item -LiteralPath "README.md", "PRIVACY.md", "SECURITY.md", "LICENSE", "CHANGELOG.md" -Destination $PackageDir
     $DocsDir = Join-Path $PackageDir "docs"
     New-Item -ItemType Directory -Path $DocsDir | Out-Null
-    Copy-Item -LiteralPath "docs\使用手册.md" -Destination $DocsDir
+    Copy-Item -LiteralPath "docs\使用手册.md", "docs\Claude桌面翻译.md" -Destination $DocsDir
     $SelfTest = Join-Path $PackageDir "self-test.json"
     $SelfTestProcess = Start-Process -FilePath (Join-Path $PackageDir "Codex工具箱.exe") `
         -ArgumentList @("--self-test", $SelfTest) -WindowStyle Hidden -Wait -PassThru

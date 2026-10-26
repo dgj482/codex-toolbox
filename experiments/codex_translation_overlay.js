@@ -1,6 +1,10 @@
 (() => {
   window.__codexToolboxSurfaceTranslation?.destroy?.();
   const config = __CODEX_TOOLBOX_CONFIG__;
+  const appName=config.appName||'Codex';
+  const accent=config.appName==='Claude'?'#b25a3c':'#5868df';
+  const assistantSelector=config.assistantSelector||'[data-markdown-text-style="assistant-message"]';
+  const messageSelector=config.messageSelector||'[data-markdown-text-style="assistant-message"],[data-markdown-text-tone="user-message"],.inline-markdown,[class*="MarkdownRoot"],[class*="InlineMarkdown"]';
   const dictionary = new Map(Object.entries({
     "New task":"新建任务", "New chat":"新聊天", "Settings":"设置", "Plugins":"插件", "Skills":"技能",
     "Automations":"自动化", "Archived tasks":"已归档任务", "Search":"搜索", "Pull requests":"拉取请求",
@@ -65,7 +69,7 @@
     "Check for Updates":"检查更新", "About ChatGPT":"关于 ChatGPT"
   }));
   const protectedTerms = new Set(["Codex","ChatGPT","OpenAI","Git","PowerShell","PyCharm","API","URL","MCP","model","Model","models","Models"]);
-  const modelNamePattern=/\b(?:gpt-\d[\w.-]*|o[134](?:-[\w.-]+)?|qwen[\w.-]*|claude[\w.-]*|gemini[\w.-]*)\b/i;
+  const modelNamePattern=/\b(?:gpt-\d[\w.-]*|o[134](?:-[\w.-]+)?|qwen[\w.-]*|claude[\w.-]*|gemini[\w.-]*|sonnet|opus|haiku|mythos|fable)\b/i;
   const BODY_TRANSLATION_CONCURRENCY=3;
   // 批次上限与后端 Qwen-MT 的打包参数保持一致（codex_surface_translation.QWEN_MT_PACK_ITEMS/CHARACTERS）：
   // 前端切得比后端小会让后端白拼一次，切得比后端大又会被后端拆成多次原生请求。
@@ -110,8 +114,8 @@
   function baseExcluded(node){
     const parent=node.parentElement;return !parent||root.contains(parent)||!!parent.closest('code,pre,textarea,input,[contenteditable="true"],[aria-hidden="true"],[class*="activity-header"],[class*="loading-shimmer"]')||!!(parent.closest('a')&&insideAnyMessage(node));
   }
-  function assistantBodyRoot(node){return node.parentElement?.closest('[data-markdown-text-style="assistant-message"]')||null;}
-  function insideAnyMessage(node){return !!node.parentElement?.closest('[data-markdown-text-style="assistant-message"],[data-markdown-text-tone="user-message"],.inline-markdown,[class*="MarkdownRoot"],[class*="InlineMarkdown"]');}
+  function assistantBodyRoot(node){return node.parentElement?.closest(assistantSelector)||null;}
+  function insideAnyMessage(node){return !!node.parentElement?.closest(messageSelector);}
   function interfaceTextProtected(text,node){
     if(protectedTerms.has(text)||/^(?:https?:\/\/|[A-Za-z]:\\|\/)[^\s]+$/.test(text)||/^\S+@\S+\.\S+$/.test(text))return true;
     if(/^(?:(?:Alt|Ctrl|Control|Shift|Meta|Win|Cmd|Command)[+\-])+/i.test(text))return true;
@@ -140,7 +144,7 @@
   }
   function assistantBodyTextNodes(){
     if(!config.translateMessages)return [];const nodes=[];
-    for(const message of document.querySelectorAll('[data-markdown-text-style="assistant-message"]')){
+    for(const message of document.querySelectorAll(assistantSelector)){
       const walker=document.createTreeWalker(message,NodeFilter.SHOW_TEXT);while(walker.nextNode()){
         const node=walker.currentNode,text=sourceText(node);if(!baseExcluded(node)&&assistantBodyRoot(node)===message&&bodyCandidate(text))nodes.push(node);
       }
@@ -260,6 +264,9 @@
   function viewportChanged(){schedulePosition();scheduleRender();}
 
   const inputControls=document.createElement('div');
+  const CONTROL_POSITION_KEY=appName.toLowerCase()+'-toolbox-translation-controls-position-v1';
+  let controlPosition=null,controlDrag=null;
+  try{const saved=JSON.parse(localStorage.getItem(CONTROL_POSITION_KEY));if(saved&&Number.isFinite(saved.x)&&Number.isFinite(saved.y))controlPosition=saved;}catch(_){}
   const controlsDark=getComputedStyle(document.documentElement).colorScheme==='dark';
   inputControls.style.cssText='display:none;position:fixed;z-index:2147483001;pointer-events:auto;flex-direction:column;align-items:stretch;gap:3px;padding:3px;border:1px solid '+(controlsDark?'rgba(255,255,255,.14)':'rgba(105,115,145,.2)')+';border-radius:10px;background:'+(controlsDark?'#23252b':'#fff')+';box-shadow:0 3px 10px rgba(25,32,72,.12);font:12px/1.2 system-ui,sans-serif';
   const translationNotice=document.createElement('div');translationNotice.setAttribute('role','status');translationNotice.setAttribute('aria-live','polite');
@@ -278,15 +285,39 @@
   originalPageButton.style.cssText='width:48px;height:30px;border:1px solid '+(controlsDark?'rgba(255,255,255,.2)':'rgba(120,130,160,.28)')+';border-radius:7px;padding:0;background:transparent;color:'+(controlsDark?'#f1f3f7':'#394154')+';font:inherit;cursor:pointer;transition:background .16s ease,color .16s ease';
   const translatePageButton=document.createElement('button');translatePageButton.type='button';translatePageButton.textContent='翻译页面';translatePageButton.title='翻译当前屏幕内的英文，并在全部完成后一起显示';
   translatePageButton.style.cssText='width:66px;height:30px;border:0;border-radius:7px;padding:0;background:#5868df;color:#fff;font:inherit;cursor:pointer';
-  inputTranslationRow.append(directionSelect,translateButton);pageTranslationRow.append(originalPageButton,translatePageButton);inputControls.append(translationNotice,inputTranslationRow,pageTranslationRow);root.appendChild(inputControls);
-  function editorLooksLikeComposer(editor){const rect=editor.getBoundingClientRect();return rect.width>160&&rect.height>20&&rect.bottom>innerHeight*.45;}
+  const controlHeader=document.createElement('div');controlHeader.style.cssText='display:flex;align-items:center;height:16px;gap:4px';
+  const appBadge=document.createElement('span');appBadge.textContent=appName;appBadge.style.cssText='font:600 10px/16px system-ui,sans-serif;letter-spacing:.1px;color:'+(appName==='Claude'?(controlsDark?'#e9b69d':'#a35435'):(controlsDark?'#a5b5ff':'#5369bd'))+';padding-left:2px;user-select:none;white-space:nowrap';
+  const dragHandle=document.createElement('button');dragHandle.type='button';dragHandle.textContent='⠿';dragHandle.setAttribute('aria-label','拖动翻译浮窗');dragHandle.title='拖动到空白位置';dragHandle.style.cssText='flex:1;height:16px;border:0;border-radius:4px;padding:0;background:transparent;color:inherit;opacity:.55;cursor:grab;touch-action:none;user-select:none';
+  const resetPosition=document.createElement('button');resetPosition.type='button';resetPosition.textContent='↺';resetPosition.setAttribute('aria-label','恢复浮窗默认位置');resetPosition.title='恢复默认位置';resetPosition.style.cssText='width:18px;height:16px;padding:0;border:0;border-radius:4px;background:transparent;color:inherit;opacity:.55;cursor:pointer';
+  controlHeader.append(appBadge,dragHandle,resetPosition);
+  translateButton.style.background=accent;translatePageButton.style.background=accent;
+  inputTranslationRow.append(directionSelect,translateButton);pageTranslationRow.append(originalPageButton,translatePageButton);inputControls.append(translationNotice,controlHeader,inputTranslationRow,pageTranslationRow);root.appendChild(inputControls);
+  function controlBounds(width,height,viewportWidth,viewportHeight){return {left:8,top:8,maxLeft:Math.max(8,viewportWidth-width-8),maxTop:Math.max(8,viewportHeight-height-8)};}
+  function placeControls(left,top){
+    inputControls.style.display='flex';const rect=inputControls.getBoundingClientRect(),bounds=controlBounds(rect.width,rect.height,innerWidth,innerHeight);
+    inputControls.style.right='auto';inputControls.style.bottom='auto';inputControls.style.left=Math.min(bounds.maxLeft,Math.max(bounds.left,left))+'px';inputControls.style.top=Math.min(bounds.maxTop,Math.max(bounds.top,top))+'px';
+  }
+  function rememberControlPosition(){
+    const rect=inputControls.getBoundingClientRect(),bounds=controlBounds(rect.width,rect.height,innerWidth,innerHeight);
+    controlPosition={x:(rect.left-bounds.left)/Math.max(1,bounds.maxLeft-bounds.left),y:(rect.top-bounds.top)/Math.max(1,bounds.maxTop-bounds.top)};
+    try{localStorage.setItem(CONTROL_POSITION_KEY,JSON.stringify(controlPosition));}catch(_){}
+  }
+  dragHandle.addEventListener('pointerdown',event=>{
+    if(event.button!==0)return;event.preventDefault();const rect=inputControls.getBoundingClientRect();controlDrag={id:event.pointerId,x:event.clientX,y:event.clientY,left:rect.left,top:rect.top};dragHandle.setPointerCapture(event.pointerId);dragHandle.style.cursor='grabbing';
+  });
+  dragHandle.addEventListener('pointermove',event=>{if(!controlDrag||event.pointerId!==controlDrag.id)return;placeControls(controlDrag.left+event.clientX-controlDrag.x,controlDrag.top+event.clientY-controlDrag.y);});
+  function finishControlDrag(event){if(!controlDrag||event.pointerId!==controlDrag.id)return;controlDrag=null;dragHandle.style.cursor='grab';rememberControlPosition();}
+  dragHandle.addEventListener('pointerup',finishControlDrag);dragHandle.addEventListener('pointercancel',finishControlDrag);dragHandle.addEventListener('lostpointercapture',finishControlDrag);
+  resetPosition.addEventListener('click',()=>{controlPosition=null;try{localStorage.removeItem(CONTROL_POSITION_KEY);}catch(_){}schedulePosition();});
+  function editorLooksLikeComposer(editor){const rect=editor.getBoundingClientRect();return rect.width>160&&rect.height>1&&rect.bottom>innerHeight*.45&&editorPriority(editor)>0;}
+  function editorPriority(editor){return editor.matches('.ProseMirror,[data-lexical-editor="true"],[contenteditable="true"]')?2:editor.closest('[class*="ComposerLayout"]')?1:0;}
   function findEditor(){
     // 输入框是长寿命节点，缓存住就不用每轮渲染都全文档扫一次。
     // 失效条件：节点被移除（换会话、切项目），或几何不再符合输入框特征（窗口尺寸变化）。
-    if(state.editor&&state.editor.isConnected&&editorLooksLikeComposer(state.editor))return state.editor;
-    const all=[...document.querySelectorAll('textarea,[contenteditable="true"]')].filter(editorLooksLikeComposer);
+    if(state.editor&&state.editor.isConnected&&!root.contains(state.editor)&&editorLooksLikeComposer(state.editor))return state.editor;
+    const all=[...document.querySelectorAll(config.composerSelector||'textarea,[contenteditable="true"]')].filter(editor=>!root.contains(editor)&&editorLooksLikeComposer(editor));
     // 先测一次再排序：把 getBoundingClientRect 放进比较器会让同一次排序重复强制布局。
-    const editor=all.map(node=>({node,bottom:node.getBoundingClientRect().bottom})).sort((a,b)=>b.bottom-a.bottom)[0]?.node||null;
+    const editor=all.map(node=>({node,priority:editorPriority(node),bottom:node.getBoundingClientRect().bottom})).sort((a,b)=>b.priority-a.priority||b.bottom-a.bottom)[0]?.node||null;
     state.editor=editor;return editor;
   }
   function editorText(editor){return editor instanceof HTMLTextAreaElement||editor instanceof HTMLInputElement?editor.value:editor.innerText;}
@@ -303,16 +334,26 @@
     return editorText(editor).trim()===value.trim();
   }
   function editorIsUncovered(editor){const r=editor.getBoundingClientRect(),hit=document.elementFromPoint(Math.min(r.right-8,r.left+24),Math.min(r.bottom-8,r.top+18));return !!hit&&(hit===editor||editor.contains(hit)||hit.contains(editor));}
-  function findSendButton(editor){if(!editor)return null;const footer=editor.closest('[class*="ComposerLayoutFooter"]')||editor.parentElement?.parentElement?.parentElement?.parentElement;return footer?[...footer.querySelectorAll('button')].find(item=>/^(Send|Stop)$/.test((item.getAttribute('aria-label')||'').trim())):null;}
-  function parkControls(){inputControls.style.display='flex';inputControls.style.right='12px';inputControls.style.left='auto';inputControls.style.bottom='14px';inputControls.style.top='auto';}
+  function sendButtonKind(button){
+    const labels=[button.getAttribute('aria-label'),button.title,button.textContent].filter(Boolean).map(value=>value.trim());
+    if(labels.some(value=>/^(stop|stop generating|停止|停止生成)(?:\s*\([^)]*\))?$/i.test(value)))return 'stop';
+    if(labels.some(value=>/^(send(?: message| prompt)?|submit(?: message| prompt)?|queue(?: message)?|steer|发送(?:消息)?|排队|调整当前任务)(?:\s*\([^)]*\))?$/i.test(value)))return 'send';
+    return !labels.length&&button.type==='submit'?'send':null;
+  }
+  function composerButtons(editor){
+    // Input 和 Footer 都含 ComposerLayout；最近的 Input 节点没有发送按钮。
+    if(!editor)return [];const scope=(config.composerScopeSelector&&editor.closest(config.composerScopeSelector))||editor.closest('form')||editor.closest('[class*="ComposerLayoutRoot"],[data-composer-root]')||editor.closest('[class*="ComposerLayoutFooter"]')||editor.parentElement;
+    return scope?[...scope.querySelectorAll('button')].filter(button=>!root.contains(button)&&(!button.getClientRects||button.getClientRects().length>0)):[];
+  }
+  function findSendButton(editor){return composerButtons(editor).find(button=>sendButtonKind(button))||null;}
+  function parkControls(){inputControls.style.display='flex';const rect=inputControls.getBoundingClientRect();placeControls(innerWidth-rect.width-12,innerHeight-rect.height-14);}
   function positionInputButton(editor=findEditor()){
     if(!config.translateInput&&!config.translateInterface&&!config.translateMessages){inputControls.style.display='none';return;}
+    if(controlDrag)return;
+    if(controlPosition){inputControls.style.display='flex';const rect=inputControls.getBoundingClientRect(),bounds=controlBounds(rect.width,rect.height,innerWidth,innerHeight);placeControls(bounds.left+controlPosition.x*(bounds.maxLeft-bounds.left),bounds.top+controlPosition.y*(bounds.maxTop-bounds.top));return;}
     if(!editor||!editorIsUncovered(editor)){parkControls();return;}
-    const sendButton=findSendButton(editor);
-    if(!sendButton){parkControls();return;}
-    const sendRect=sendButton.getBoundingClientRect();inputControls.style.display='flex';inputControls.style.right='auto';inputControls.style.bottom='auto';
-    const controlRect=inputControls.getBoundingClientRect(),height=controlRect.height||69;
-    inputControls.style.left=Math.max(8,sendRect.right+6)+'px';inputControls.style.top=Math.max(8,sendRect.bottom-height)+'px';
+    const editorRect=editor.getBoundingClientRect();inputControls.style.display='flex';const controlRect=inputControls.getBoundingClientRect();
+    placeControls(editorRect.right-controlRect.width,editorRect.top-controlRect.height-10);
   }
   const composerResizeObserver=new ResizeObserver(schedulePosition);
   function observeComposer(editor=findEditor()){
@@ -325,51 +366,54 @@
     }
   }
   function fallbackSendButton(editor){
-    // findSendButton 认的是 aria-label=Send/Stop；Codex 改过几次按钮结构，
-    // 这里退回输入框所在的 form / Composer 容器里找 submit，不再全文档扫按钮。
-    const scope=editor.closest('form')||editor.closest('[class*="ComposerLayout"]')||editor.parentElement;
-    if(!scope)return null;
-    return [...scope.querySelectorAll('button:not([disabled])')]
-      .find(item=>/^(send|发送)$/i.test((item.getAttribute('aria-label')||item.title||item.textContent||'').trim())||item.type==='submit'&&!/^(stop|停止)$/i.test((item.getAttribute('aria-label')||item.title||item.textContent||'').trim()))||null;
+    return composerButtons(editor).find(button=>sendButtonKind(button)==='send'&&!button.disabled&&button.getAttribute('aria-disabled')!=='true')||null;
   }
   function enabledSendButton(editor){
-    const button=findSendButton(editor);
-    if(button&&/^(send|发送)$/i.test((button.getAttribute('aria-label')||'').trim())&&!button.disabled)return button;
     return fallbackSendButton(editor);
   }
   function preview(original,translated,editor,direction){
     const outputLanguage=direction==='en-zh'?'中文':'英文',shade=document.createElement('div');shade.style.cssText='position:fixed;inset:0;z-index:2147483002;display:grid;place-items:center;pointer-events:auto;background:rgba(0,0,0,.38)';
     const surfaceBorder=controlsDark?'rgba(255,255,255,.18)':'#ccd3df',surfaceText=controlsDark?'#e8eaf0':'#20242d';
     const card=document.createElement('div');card.style.cssText='width:min(680px,86vw);max-height:76vh;overflow:auto;padding:20px;border-radius:14px;background:'+(controlsDark?'#23252b':'#fff')+';color:'+surfaceText+';font:14px/1.55 sans-serif;box-shadow:0 22px 70px rgba(0,0,0,.32)';
-    const title=document.createElement('h3');title.textContent='确认'+outputLanguage+'文字';title.style.margin='0 0 12px';const source=document.createElement('pre');source.textContent=original;source.style.cssText='white-space:pre-wrap;background:'+(controlsDark?'#2d3038':'#f2f4f7')+';padding:10px;border-radius:8px;color:'+(controlsDark?'#c7ccd8':'#596273');
+    const title=document.createElement('h3');title.textContent='确认'+outputLanguage+'文字 · 回车发送';title.style.margin='0 0 12px';const source=document.createElement('pre');source.textContent=original;source.style.cssText='white-space:pre-wrap;background:'+(controlsDark?'#2d3038':'#f2f4f7')+';padding:10px;border-radius:8px;color:'+(controlsDark?'#c7ccd8':'#596273');
     const output=document.createElement('textarea');output.value=translated;output.style.cssText='width:100%;min-height:150px;box-sizing:border-box;padding:10px;border:1px solid '+surfaceBorder+';border-radius:8px;font:13px/1.5 monospace;background:'+(controlsDark?'#1c1e23':'#fff')+';color:'+surfaceText;
     const previewError=document.createElement('div');previewError.setAttribute('role','alert');previewError.style.cssText='display:none;margin-top:8px;color:'+(controlsDark?'#ffb4ad':'#9f2d24');
     const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:12px';
-    function button(label,primary,handler){const b=document.createElement('button');b.textContent=label;b.style.cssText='padding:8px 13px;border-radius:8px;border:1px solid '+surfaceBorder+';cursor:pointer;background:'+(primary?'#5868df':(controlsDark?'#2d3038':'#fff'))+';color:'+(primary?'#fff':(controlsDark?'#e8eaf0':'#303744'));b.onclick=handler;return b;}
-    function close(){shade.remove();document.removeEventListener('keydown',onPreviewKeydown,true);}
-    function onPreviewKeydown(event){if(event.key!=='Escape')return;event.preventDefault();state.enterBypassText=original;close();}
+    function button(label,primary,handler){const b=document.createElement('button');b.textContent=label;b.style.cssText='padding:8px 13px;border-radius:8px;border:1px solid '+surfaceBorder+';cursor:pointer;background:'+(primary?accent:(controlsDark?'#2d3038':'#fff'))+';color:'+(primary?'#fff':(controlsDark?'#e8eaf0':'#303744'));b.onclick=handler;return b;}
+    function close(){shade.remove();document.removeEventListener('keydown',onPreviewKeydown,true);if(state.inputPreview?.element===shade)state.inputPreview=null;}
+    function onPreviewKeydown(event){
+      if(event.isComposing||event.keyCode===229)return;
+      if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();state.enterBypassText=original;close();return;}
+      if(event.key!=='Enter'||event.shiftKey||event.ctrlKey||event.altKey||event.metaKey||event.target!==output)return;
+      event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)write(true);
+    }
     document.addEventListener('keydown',onPreviewKeydown,true);
     function write(send){
       // 弹窗打开期间 Codex 可能重建了输入框（切会话、发完消息清空），
       // 拿闭包里的旧引用写入会静默失败，所以先确认它还连在 DOM 上。
       const target=editor.isConnected?editor:findEditor(),translated=output.value;
       if(!target||!target.isConnected||editorText(target).trim()!==original){previewError.textContent='输入框已变化，请关闭预览后重新翻译。';previewError.style.display='block';return;}
-      state.enterBypassText='';
+      if(!translated.trim()){previewError.textContent='译文为空，请补充文字或取消。';previewError.style.display='block';return;}
       if(!setEditorText(target,translated)){previewError.textContent='无法将译文写入输入框，已取消发送。请检查草稿后重试。';previewError.style.display='block';return;}
+      // The preview already approved this draft; Enter should send it, even when auto-send is unavailable.
+      state.enterBypassText=translated.trim();
+      state.inputSendPending=send;
       close();target.focus();
       if(!send)return;
       const started=Date.now(),deadline=started+SEND_BUTTON_POLL_MS;
       let stableChecks=0;
       (function pollSendButton(){
-        if(state.destroyed)return;
+        if(state.destroyed){state.inputSendPending=false;return;}
         if(!target.isConnected||editorText(target).trim()!==translated.trim()){
+          state.inputSendPending=false;
           showTranslationNotice('译文未稳定写入输入框，已取消自动发送，请检查草稿。');return;
         }
         stableChecks++;
         const button=enabledSendButton(target);
         // 原文已经让发送按钮可用；必须先等编辑器处理译文，不能把按钮可用当作写入完成。
-        if(button&&stableChecks>=2&&Date.now()>=started+SEND_SETTLE_MS){button.click();return;}
+        if(button&&stableChecks>=2&&Date.now()>=started+SEND_SETTLE_MS){state.inputSendPending=false;button.click();return;}
         if(Date.now()>=deadline){
+          state.inputSendPending=false;
           showTranslationNotice(outputLanguage+'已写入输入框，但发送按钮不可用，请检查译文后手动发送。','info');
           return;
         }
@@ -378,10 +422,10 @@
     }
     // 点了取消说明用户其实想直接发送，记下这段文字放行下一次回车，
     // 否则同一段内容会一直被劫持，用户根本发不出消息。
-    actions.append(button('取消',false,()=>{state.enterBypassText=original;close();}),button('仅写入',false,()=>write(false)),button('写入并发送',true,()=>write(true)));card.append(title,source,output,previewError,actions);shade.appendChild(card);root.appendChild(shade);output.focus();
+    actions.append(button('取消',false,()=>{state.enterBypassText=original;close();}),button('仅写入',false,()=>write(false)),button('写入并发送',true,()=>write(true)));card.append(title,source,output,previewError,actions);shade.appendChild(card);root.appendChild(shade);state.inputPreview={element:shade,confirm:()=>write(true),close};output.focus();
   }
   translateButton.addEventListener('pointerdown',event=>event.preventDefault());
-  async function translateComposerInput(){const editor=findEditor(),original=editor&&editorText(editor).trim();if(!editor||!original||translateButton.disabled)return;const direction=directionSelect.value,target=direction==='en-zh'?'zh-CN':'en';translateButton.disabled=true;directionSelect.disabled=true;translateButton.textContent='翻译中…';try{const values=await request([original],target,'input');preview(original,values[0]||original,editor,direction);}catch(error){showTranslationNotice('翻译失败：'+translationErrorMessage(error));console.warn('Codex 工具箱输入翻译失败：',error);}finally{translateButton.disabled=false;directionSelect.disabled=false;translateButton.textContent='翻译';}}
+  async function translateComposerInput(){const editor=findEditor(),original=editor&&editorText(editor).trim();if(!editor||!original||translateButton.disabled||state.inputPreview||state.inputSendPending)return;const direction=directionSelect.value,target=direction==='en-zh'?'zh-CN':'en';translateButton.disabled=true;directionSelect.disabled=true;translateButton.textContent='翻译中…';try{const values=await request([original],target,'input');const translated=String(values[0]||'').trim();if(!translated)throw new Error('翻译服务返回空译文，原文已保留');if(!state.destroyed)preview(original,translated,editor,direction);}catch(error){showTranslationNotice('翻译失败：'+translationErrorMessage(error));console.warn('Codex 工具箱输入翻译失败：',error);}finally{translateButton.disabled=false;directionSelect.disabled=false;translateButton.textContent='翻译';}}
   // click also covers keyboard activation; pointerup alone silently ignores Enter/Space on this button.
   translateButton.addEventListener('click',()=>{void translateComposerInput();});
   function textMatchesDirection(text,direction){
@@ -393,12 +437,20 @@
     return direction==='zh-en'?cjk>=2:latin>=3&&latin>cjk;
   }
   function inputTranslationShortcut(event){
-    if(!config.translateInput||event.defaultPrevented||event.key!=='Enter'||event.shiftKey||event.ctrlKey||event.altKey||event.metaKey||event.isComposing||event.keyCode===229||root.contains(event.target))return;
+    if(!config.translateInput||config.interceptEnter===false||event.defaultPrevented||event.key!=='Enter'||event.shiftKey||event.ctrlKey||event.altKey||event.metaKey||event.isComposing||event.keyCode===229||root.contains(event.target))return;
     const editor=findEditor();
-    if(!editor||!(event.target===editor||editor.contains(event.target))||translateButton.disabled)return;
+    if(!editor||!(event.target===editor||editor.contains(event.target)))return;
+    if(translateButton.disabled||state.inputSendPending){event.preventDefault();event.stopImmediatePropagation();return;}
+    if(state.inputPreview){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)state.inputPreview.confirm();return;}
     const text=editorText(editor).trim();
-    if(!text||state.enterBypassText===text||!textMatchesDirection(text,directionSelect.value))return;
-    event.preventDefault();event.stopImmediatePropagation();void translateComposerInput();
+    if(!text)return;
+    if(state.enterBypassText===text){
+      const button=enabledSendButton(editor);
+      if(button){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)button.click();}
+      return;
+    }
+    if(!textMatchesDirection(text,directionSelect.value))return;
+    event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)void translateComposerInput();
   }
   document.addEventListener('keydown',inputTranslationShortcut,true);
   function currentPageSnapshot(){
@@ -460,7 +512,7 @@
     finally{state.manualPageRunning=false;translatePageButton.disabled=false;originalPageButton.disabled=false;translatePageButton.textContent='翻译页面';updatePageButtons();scheduleRender();}
   }
   function updatePageButtons(){
-    const original=!state.showTranslations;originalPageButton.setAttribute('aria-pressed',String(original));originalPageButton.style.background=original?'#5868df':'transparent';originalPageButton.style.color=original?'#fff':(controlsDark?'#f1f3f7':'#394154');
+    const original=!state.showTranslations;originalPageButton.setAttribute('aria-pressed',String(original));originalPageButton.style.background=original?accent:'transparent';originalPageButton.style.color=original?'#fff':(controlsDark?'#f1f3f7':'#394154');
   }
   originalPageButton.addEventListener('click',()=>{if(state.manualPageRunning)return;state.showTranslations=false;restoreAllTranslations();updatePageButtons();scheduleRender();});
   translatePageButton.addEventListener('click',translateCurrentPage);
@@ -482,8 +534,8 @@
   const renderInterval=setInterval(()=>{if(state.showTranslations)scheduleRender();},900);
   const positionInterval=setInterval(()=>schedulePosition(),1000);
   scheduleRender();
-  window.__codexToolboxSurfaceTranslation={diagnostics(){return {translateInterface:!!config.translateInterface,translateMessages:!!config.translateMessages,translateInput:!!config.translateInput,showTranslations:state.showTranslations,cachedTexts:state.cache.size,cacheLimit:CACHE_LIMIT,cachedBodyTexts:[...state.cache.keys()].filter(key=>key.startsWith('body:zh:')).length,queuedBodyTexts:state.bodyQueue.size,pendingBodyTexts:state.bodyPending.size,bodyRequestsRunning:state.bodyRequestsRunning,bodyRequestLimit:BODY_TRANSLATION_CONCURRENCY,batchMaxItems:BATCH_MAX_ITEMS,batchMaxCharacters:BATCH_MAX_CHARACTERS,observedComposerTargets:state.observedComposer.size,assistantBodies:document.querySelectorAll('[data-markdown-text-style="assistant-message"]').length};},destroy(){
-    state.destroyed=true;observer.disconnect();resizeObserver.disconnect();composerResizeObserver.disconnect();clearInterval(renderInterval);clearInterval(positionInterval);if(translationNoticeTimer)clearTimeout(translationNoticeTimer);if(state.renderTimer)clearTimeout(state.renderTimer);if(state.renderFrame)cancelAnimationFrame(state.renderFrame);if(state.positionFrame)cancelAnimationFrame(state.positionFrame);removeEventListener('scroll',viewportChanged,true);removeEventListener('resize',viewportChanged);document.removeEventListener('keydown',inputTranslationShortcut,true);
+  window.__codexToolboxSurfaceTranslation={diagnostics(){return {appName,translateInterface:!!config.translateInterface,translateMessages:!!config.translateMessages,translateInput:!!config.translateInput,showTranslations:state.showTranslations,cachedTexts:state.cache.size,cacheLimit:CACHE_LIMIT,cachedBodyTexts:[...state.cache.keys()].filter(key=>key.startsWith('body:zh:')).length,queuedBodyTexts:state.bodyQueue.size,pendingBodyTexts:state.bodyPending.size,bodyRequestsRunning:state.bodyRequestsRunning,bodyRequestLimit:BODY_TRANSLATION_CONCURRENCY,batchMaxItems:BATCH_MAX_ITEMS,batchMaxCharacters:BATCH_MAX_CHARACTERS,observedComposerTargets:state.observedComposer.size,assistantBodies:document.querySelectorAll(assistantSelector).length};},destroy(){
+    state.destroyed=true;state.inputPreview?.close();observer.disconnect();resizeObserver.disconnect();composerResizeObserver.disconnect();clearInterval(renderInterval);clearInterval(positionInterval);if(translationNoticeTimer)clearTimeout(translationNoticeTimer);if(state.renderTimer)clearTimeout(state.renderTimer);if(state.renderFrame)cancelAnimationFrame(state.renderFrame);if(state.positionFrame)cancelAnimationFrame(state.positionFrame);removeEventListener('scroll',viewportChanged,true);removeEventListener('resize',viewportChanged);document.removeEventListener('keydown',inputTranslationShortcut,true);
     state.pending.forEach(x=>x.reject(new Error('翻译层已关闭')));state.pending.clear();state.bodyQueue.clear();state.bodyPending.clear();state.interfaceQueue.clear();state.interfacePending.clear();state.rectCache.clear();state.observedComposer.clear();state.editor=null;if(state.bodyStabilityTimer)clearTimeout(state.bodyStabilityTimer);restoreAllTranslations();root.remove();delete window.__codexToolboxTranslationResolve;delete window.__codexToolboxSurfaceTranslation;
   }};
   return 'Codex 表层翻译已启动';

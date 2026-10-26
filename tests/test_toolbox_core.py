@@ -645,7 +645,7 @@ class ToolboxCoreTests(unittest.TestCase):
 
     def test_switch_provider_never_rewrites_existing_sessions(self):
         """全局切换只能改默认值，不能因旧会话路由失败而失败。"""
-        api = object.__new__(Api)
+        api = Api()
         provider = {
             "id": "relay", "name": "测试中转", "kind": "relay",
             "proxy": False,
@@ -659,7 +659,7 @@ class ToolboxCoreTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertTrue(result["existing_sessions_unchanged"])
-        ensure.assert_called_once_with("relay", None)
+        ensure.assert_not_called()
         apply.assert_called_once_with("relay", None)
         set_threads.assert_not_called()
 

@@ -12,11 +12,14 @@ import subprocess
 import re
 import secrets
 import shutil
+import plistlib
+import tempfile
 import time
 import urllib.request
 import webview
 import codex_toolbox as core
 import secret_store
+from provider_style import stored_css
 from codex_surface_translation import OpenAICompatibleTranslator, SurfaceTranslationController, select_codex_page_target
 from version import __version__
 
@@ -57,6 +60,8 @@ class Api:
         self.proxy_server = None
         self.proxy_process = None
         self.proxy_url = ""
+        self._proxy_sessions = {}
+        self._provider_lock = threading.Lock()
         # 会话路由在后台执行，避免 UI 请求被 app-server 的落盘校验长时间阻塞。
         self.route_operations = {}
         self.route_operations_lock = threading.Lock()
@@ -67,6 +72,15 @@ class Api:
         self._translation_controller = None
         self._translation_last_error = ""
         self._translation_log_lock = threading.Lock()
+        self._claude_page_bridge = None
+        self._claude_page_options = None
+        self._claude_last_error = ""
+        self._claude_lock = threading.RLock()
+        self._claude_generation = 0
+        self._claude_starting = False
+        from claude_channels import ClaudeChannels
+        self._claude_channels = ClaudeChannels()
+        self._claude_switch_lock = threading.Lock()
         # 启动时只读取状态，绝不因“检测到旧配置”自动改写用户的 Codex 配置。
         # 历史迁移函数保留给维护者手动处理，不作为公开版启动路径的一部分。
         self.migrated_dashscope = False
@@ -76,7 +90,202 @@ class Api:
         self._window = window
 
     def get_app_info(self):
-        return {"version": __version__, "auth_migration_error": getattr(self, "_auth_migration_error", "")}
+        return {"version": __version__, "claude_supported": os.name == "nt", "secret_storage": "macOS Keychain" if sys.platform == "darwin" else "Windows DPAPI", "auth_migration_error": getattr(self, "_auth_migration_error", "")}
+
+    # ---------- Claude Desktop saved providers ----------
+    def get_claude_providers(self):
+        try:
+            return self._claude_channels.list()
+        except Exception as error:
+            return {"ok": False, "error": str(error)}
+
+    def save_claude_provider(self, data):
+        try:
+            provider_id = self._claude_channels.save(data)
+            return {"ok": True, "id": provider_id, "message": "供应商已保存；切换后生效。"}
+        except Exception as error:
+            return {"ok": False, "error": str(error)}
+
+    def delete_claude_provider(self, provider_id):
+        try:
+            self._claude_channels.delete(provider_id)
+            return {"ok": True}
+        except Exception as error:
+            return {"ok": False, "error": str(error)}
+
+    def import_claude_providers(self):
+        if not self._claude_switch_lock.acquire(blocking=False):
+            return {"ok": False, "error": "Claude 通道正在更新，请稍后导入"}
+        try:
+            report = self._claude_channels.import_native()
+            message = (f"已导入 {report['imported']} 个；重复 {report['duplicates']} 个；"
+                       f"跳过 {report['skipped']} 个；无效 {report['failed']} 个。当前通道未改变。")
+            if not report["items"]:
+                message = "未发现 Claude 本地保存的供应商配置。可通过“添加供应商”手动配置。"
+            return {"ok": True, "message": message, **report}
+        except Exception as error:
+            return {"ok": False, "error": str(error)}
+        finally:
+            self._claude_switch_lock.release()
+
+    def test_claude_provider(self, provider_id):
+        try:
+            return {"ok": True, "message": self._claude_channels.check(provider_id)}
+        except Exception as error:
+            return {"ok": False, "error": str(error)}
+
+    def switch_claude_provider(self, provider_id):
+        if not self._claude_switch_lock.acquire(blocking=False):
+            return {"ok": False, "error": "Claude 正在切换通道，请稍候"}
+        stopped = False
+        try:
+            from claude_channels import OFFICIAL, stop_claude_app
+            from claude_page_loader import launch_claude
+            # Validate provider existence before disrupting the current app.
+            if provider_id != OFFICIAL:
+                self._claude_channels._provider(provider_id)
+            self.stop_claude_translation()
+            stop_claude_app()
+            stopped = True
+            backup = self._claude_channels.apply(provider_id)
+            launch_claude()
+            return {"ok": True, "message": "Claude 通道已切换并重启。", "backup_dir": backup}
+        except Exception as error:
+            if stopped:
+                try:
+                    launch_claude()
+                except Exception:
+                    pass
+            return {"ok": False, "error": str(error)}
+        finally:
+            self._claude_switch_lock.release()
+
+    # ---------- Windows Claude 页面翻译 ----------
+    def open_claude_translation(self, data):
+        """Attach the existing Codex page engine to Claude's Chat page."""
+        if os.name != "nt":
+            return {"ok": False, "error": "Claude 桌面翻译目前仅支持 Windows"}
+        from claude_channels import OFFICIAL
+        if self._claude_channels.list()["current_id"] != OFFICIAL:
+            return {"ok": False, "error": "第三方供应商模式暂不支持页面翻译；请切换到官方连接"}
+        options = {
+            "provider_id": str(data.get("provider_id") or ""),
+            "model": str(data.get("model") or ""),
+            "translate_interface": bool(data.get("translate_interface", True)),
+            "translate_messages": bool(data.get("translate_messages", True)),
+            "translate_input": bool(data.get("translate_input", True)),
+            "intercept_enter": bool(data.get("intercept_enter", self._load_translation_settings().get("intercept_enter", True))),
+        }
+        with self._claude_lock:
+            if self._claude_starting:
+                return {"ok": False, "error": "Claude 翻译正在接入，请稍候"}
+            current = self._claude_page_bridge
+            if current and self._claude_page_options == options and current.state()["attached"]:
+                return {"ok": True, "message": "Claude 页面翻译已开启"}
+            self._claude_generation += 1
+            generation = self._claude_generation
+            self._claude_page_bridge = None
+            self._claude_page_options = options
+            self._claude_last_error = ""
+            self._claude_starting = True
+        if current:
+            current.stop()
+        bridge = None
+        try:
+            from claude_page_loader import ClaudePageLoader, check_developer_permissions
+            from claude_surface_translation import ClaudePageTranslationBridge
+            check_developer_permissions()
+            translator = self._create_surface_translator(options)
+            bridge = ClaudePageTranslationBridge(translator,
+                _resource_path("experiments", "codex_translation_overlay.js"),
+                intercept_enter=options["intercept_enter"],
+                translate_interface=options["translate_interface"],
+                translate_input=options["translate_input"],
+                translate_messages=options["translate_messages"])
+            bridge.start()
+            with self._claude_lock:
+                if generation != self._claude_generation:
+                    raise RuntimeError("Claude 翻译接入已取消")
+                self._claude_page_bridge = bridge
+            ClaudePageLoader(bridge, self._window, on_stage=self._trace_claude_launch).attach()
+            with self._claude_lock:
+                if generation != self._claude_generation:
+                    raise RuntimeError("Claude 翻译接入已取消")
+                self._claude_last_error = ""
+            return {"ok": True, "message": "Claude 页面翻译已开启"}
+        except Exception as error:
+            if bridge:
+                bridge.stop()
+            with self._claude_lock:
+                if generation == self._claude_generation:
+                    self._claude_last_error = str(error)
+            return {"ok": False, "error": str(error)}
+        finally:
+            with self._claude_lock:
+                if generation == self._claude_generation:
+                    self._claude_starting = False
+
+    def _trace_claude_launch(self, stage):
+        # Fixed stage names only: no prompts, provider configuration or capability tokens.
+        try:
+            path = os.path.join(core._app_dir(), "claude_launch.log")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "a", encoding="utf-8") as handle:
+                handle.write(time.strftime("%Y-%m-%d %H:%M:%S") + " " + stage + "\n")
+        except OSError:
+            pass
+
+    def launch_claude_hub(self, data):
+        """Open Claude and attach the existing in-page translator."""
+        self._trace_claude_launch("home-request")
+        try:
+            from claude_page_loader import launch_claude
+            from claude_channels import OFFICIAL
+            if self._claude_channels.list()["current_id"] != OFFICIAL:
+                launch_claude()
+                return {"ok": True, "message": "Claude 已打开当前供应商；第三方模式暂不支持页面翻译。"}
+            launch_claude()
+            self._trace_claude_launch("launcher-returned")
+        except Exception as error:
+            self._trace_claude_launch("launch-error-" + type(error).__name__)
+            with self._claude_lock:
+                self._claude_last_error = str(error)
+            return {"ok": False, "error": str(error)}
+        result = self.open_claude_translation(data)
+        if result.get("ok"):
+            self._trace_claude_launch("launch-attached")
+            return {**result, "message": "Claude 已打开；页面翻译已开启。"}
+        self._trace_claude_launch("launch-attach-failed")
+        with self._claude_lock:
+            self._claude_last_error = str(result.get("error", ""))
+        return {**result, "error": "Claude 已打开，但翻译接入失败：" + str(result.get("error", ""))}
+
+    def open_claude_page_translation(self, data):
+        return self.open_claude_translation(data)
+
+    def get_claude_translation_state(self):
+        with self._claude_lock:
+            state = self._claude_page_bridge.state() if self._claude_page_bridge else {"running": False, "attached": False}
+            phase = "starting" if self._claude_starting else "attached" if state["attached"] else "disconnected" if state["running"] else "error" if self._claude_last_error else "stopped"
+            message = {"starting": "正在接入 Claude 页面翻译…",
+                       "attached": "Claude 页面翻译已开启",
+                       "disconnected": state.get("error") or "翻译正在重连；返回 Claude 对话页面后自动恢复。",
+                       "stopped": "Claude 翻译已关闭", "error": self._claude_last_error}[phase]
+            return {**state, "phase": phase, "message": message}
+
+    def stop_claude_translation(self):
+        with self._claude_lock:
+            self._claude_generation += 1
+            self._claude_starting = False
+            bridge, self._claude_page_bridge = self._claude_page_bridge, None
+            self._claude_page_options = None
+            self._claude_last_error = ""
+        if bridge:
+            bridge.stop()
+        return {"ok": True}
+
+    def stop_claude_page_translation(self):
+        return self.stop_claude_translation()
 
     @staticmethod
     def _mutation_block_reason():
@@ -223,7 +432,7 @@ class Api:
             result = self._window.create_file_dialog(
                 webview.OPEN_DIALOG,
                 allow_multiple=False,
-                file_types=("Windows 程序 (*.exe)",),
+                file_types=("Codex 应用 (*.app)",) if sys.platform == "darwin" else ("Windows 程序 (*.exe)",),
             )
             return {"ok": True, "path": result[0] if result else ""}
         except Exception as e:
@@ -231,6 +440,11 @@ class Api:
 
     @staticmethod
     def _find_pwsh():
+        if sys.platform == "darwin" and getattr(sys, "frozen", False):
+            bundled = os.path.abspath(os.path.join(os.path.dirname(sys.executable),
+                                                   "..", "Resources", "powershell", "pwsh"))
+            if os.path.isfile(bundled) and os.access(bundled, os.X_OK):
+                return bundled
         # 优先使用用户已安装并在 PATH 中可用的 PowerShell 7，避免把外观实验
         # 错误地绑定到某一台电脑的 Codex 运行时缓存目录。
         for command in ("pwsh.exe", "pwsh"):
@@ -238,6 +452,10 @@ class Api:
             if found:
                 return found
         candidates = []
+        if sys.platform == "darwin":
+            for path in ("/opt/homebrew/bin/pwsh", "/usr/local/bin/pwsh", "/usr/local/microsoft/powershell/7/pwsh"):
+                if os.path.isfile(path) and os.access(path, os.X_OK):
+                    return path
         for path in glob.glob(os.path.join(os.path.expanduser("~"), ".cache", "codex-runtimes", "**", "pwsh.exe"), recursive=True):
             if os.path.isfile(path):
                 candidates.append(path)
@@ -254,14 +472,55 @@ class Api:
                       f, ensure_ascii=False, indent=2)
         os.replace(temporary, path)
 
+    @staticmethod
+    def _validated_launch_path(value):
+        path = str(value or "").strip()
+        if not path:
+            return ""
+        path = os.path.abspath(os.path.expanduser(os.path.expandvars(path)))
+        if sys.platform == "darwin":
+            if path.endswith(".app"):
+                try:
+                    with open(os.path.join(path, "Contents", "Info.plist"), "rb") as handle:
+                        executable = plistlib.load(handle)["CFBundleExecutable"]
+                    binary = os.path.join(path, "Contents", "MacOS", executable)
+                except (OSError, KeyError, plistlib.InvalidFileException):
+                    raise ValueError("指定的 Codex .app 无效")
+            else:
+                binary = path
+                if ".app/Contents/MacOS/" not in path:
+                    raise ValueError("请选择 Codex.app 或其中的桌面可执行文件")
+            if not os.path.isfile(binary) or not os.access(binary, os.X_OK):
+                raise ValueError("Codex 桌面可执行文件不存在或不可执行")
+        elif not path.lower().endswith(".exe") or not os.path.isfile(path):
+            raise ValueError("指定的 Codex 启动程序不存在或不是 .exe 文件")
+        return path
+
+    @staticmethod
+    def _prepare_mac_background(path):
+        """Avoid Windows System.Drawing in the shared PowerShell injector."""
+        if sys.platform != "darwin" or os.path.splitext(path)[1].lower() in {".gif", ".mp4"} or os.path.getsize(path) <= 500000:
+            return path, False
+        from PIL import Image, ImageOps
+        with Image.open(path) as source:
+            image = ImageOps.exif_transpose(source).convert("RGB")
+            image.thumbnail((1280, 1280))
+        descriptor, target = tempfile.mkstemp(suffix=".jpg", prefix="codex-background-")
+        os.close(descriptor)
+        try:
+            image.save(target, "JPEG", quality=75, optimize=True)
+            while os.path.getsize(target) > 500000:
+                image.thumbnail((max(1, image.width * 3 // 4), max(1, image.height * 3 // 4)))
+                image.save(target, "JPEG", quality=65, optimize=True)
+            return target, True
+        except Exception:
+            os.unlink(target)
+            raise
+
     def _normalized_background_settings(self, data):
         defaults = self._background_defaults()
         result = {"image_path": os.path.abspath(str(data.get("image_path") or ""))}
-        launch_path = str(data.get("codex_launch_path") or "").strip()
-        if launch_path:
-            launch_path = os.path.abspath(os.path.expandvars(launch_path))
-            if not launch_path.lower().endswith(".exe") or not os.path.isfile(launch_path):
-                raise ValueError("指定的 Codex 启动程序不存在或不是 .exe 文件")
+        launch_path = self._validated_launch_path(data.get("codex_launch_path"))
         result["codex_launch_path"] = launch_path
         limits = {
             "background_mask": (0, 90), "panel_opacity": (0, 100),
@@ -424,7 +683,11 @@ class Api:
         if media_error:
             return {"ok": False, "error": media_error}
         extension = os.path.splitext(image_path)[1].lower()
+        temporary_image = ""
         try:
+            image_path, prepared = self._prepare_mac_background(image_path)
+            if prepared:
+                temporary_image = image_path
             script = _resource_path("experiments", "codex_background_injector.ps1")
             if not os.path.isfile(script):
                 raise RuntimeError("工具箱内置的背景实验脚本缺失，请重新安装工具箱")
@@ -491,6 +754,10 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+        finally:
+            if temporary_image:
+                os.unlink(temporary_image)
+
     def remove_background(self):
         try:
             script = _resource_path("experiments", "codex_background_injector.ps1")
@@ -515,7 +782,7 @@ class Api:
         return {
             "provider_id": "", "model": "", "codex_launch_path": "",
             "translate_interface": True, "translate_messages": True,
-            "translate_input": True, "port": CODEX_EXPERIMENT_PORT,
+            "translate_input": True, "intercept_enter": True, "port": CODEX_EXPERIMENT_PORT,
         }
 
     def _load_translation_settings(self):
@@ -539,12 +806,9 @@ class Api:
             "translate_interface": bool(data.get("translate_interface", True)),
             "translate_messages": bool(data.get("translate_messages", True)),
             "translate_input": bool(data.get("translate_input", True)),
+            "intercept_enter": bool(data.get("intercept_enter", self._load_translation_settings().get("intercept_enter", True))),
         }
-        launch_path = str(data.get("codex_launch_path") or "").strip()
-        if launch_path:
-            launch_path = os.path.abspath(os.path.expandvars(launch_path))
-            if not launch_path.lower().endswith(".exe") or not os.path.isfile(launch_path):
-                raise ValueError("指定的 Codex 启动程序不存在或不是 .exe 文件")
+        launch_path = self._validated_launch_path(data.get("codex_launch_path"))
         result["codex_launch_path"] = launch_path
         # 背景和翻译必须附加到同一个 Codex 调试会话。端口不是用户设置，
         # 忽略旧配置中的其他端口，避免两个功能互相重启并让覆盖层掉线。
@@ -707,7 +971,7 @@ class Api:
             self._translation_controller = controller
             self._translation_last_error = ""
             self._save_translation_settings(settings)
-            return {"ok": True, "message": "右下角四个翻译控件已经显示。当前保持原文，点击“翻译页面”后才会调用 AI。"}
+            return {"ok": True, "message": "翻译浮窗已经显示，可拖动顶部把手调整位置。当前保持原文，点击“翻译页面”后开始翻译。"}
         except subprocess.TimeoutExpired:
             return {"ok": False, "error": "等待 Codex 打开超时，请确认 Codex 能正常启动后再试"}
         except Exception as error:
@@ -805,14 +1069,36 @@ class Api:
         return {"ok": True, "message": "翻译已经关闭，现在显示的是 Codex 原来的英文界面。"}
 
     # ---------- 状态 ----------
-    def get_models(self, base_url, api_key):
+    def _saved_request_key(self, base_url, api_key, provider_id):
+        if api_key or not provider_id:
+            return api_key or ""
+        provider = next((p for p in core.load_providers() if p.get("id") == provider_id), {})
+        if provider.get("api_key") and (base_url or "").rstrip("/") != provider.get("base_url", "").rstrip("/"):
+            raise ValueError("地址已修改，请重新填写 API Key；已保存的密钥不会发送到新地址。")
+        return provider.get("api_key", "")
+
+    def get_models(self, base_url, api_key, provider_id=None):
         """从 OpenAI 兼容 API 的 /models 拉取真实模型列表"""
         import urllib.request
-        url = (base_url or "").rstrip("/") + "/models"
-        if not url.startswith("http"):
-            return {"ok": False, "error": "Base URL 无效"}
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"})
         try:
+            if provider_id == core.OFFICIAL_ID:
+                client = core._CodexAppServer(core._find_codex_executable(), timeout=15)
+                try:
+                    models, cursor = [], None
+                    while True:
+                        result = client.request("model/list", {"cursor": cursor} if cursor else {}) or {}
+                        models.extend({"id": item.get("model") or item.get("id")} for item in result.get("data", []) if item.get("model") or item.get("id"))
+                        cursor = result.get("nextCursor")
+                        if not cursor:
+                            break
+                    return {"ok": True, "models": models}
+                finally:
+                    client.close()
+            url = (base_url or "").rstrip("/") + "/models"
+            if not url.startswith(("http://", "https://")):
+                return {"ok": False, "error": "Base URL 无效"}
+            api_key = self._saved_request_key(base_url, api_key, provider_id)
+            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"} if api_key else {})
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
             models = [
@@ -831,7 +1117,7 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)[:200]}
 
-    def detect_protocol(self, base_url, api_key, model):
+    def detect_protocol(self, base_url, api_key, model, provider_id=None):
         """主动探测上游是否接受 Responses 请求，不保存也不切换供应商。"""
         import urllib.error
         import urllib.request
@@ -839,8 +1125,10 @@ class Api:
         base = (base_url or "").rstrip("/")
         if not base.startswith(("http://", "https://")):
             return {"ok": False, "error": "Base URL 无效"}
-        if not api_key:
-            return {"ok": False, "error": "请先填写 API Key"}
+        try:
+            api_key = self._saved_request_key(base_url, api_key, provider_id)
+        except ValueError as error:
+            return {"ok": False, "error": str(error)}
         if not model:
             return {"ok": False, "error": "请先填写或获取一个模型"}
 
@@ -853,7 +1141,7 @@ class Api:
         request = urllib.request.Request(
             base + "/responses", data=payload, method="POST",
             headers={
-                "Authorization": f"Bearer {api_key}",
+                **({"Authorization": f"Bearer {api_key}"} if api_key else {}),
                 "Content-Type": "application/json",
                 "User-Agent": f"CodexToolbox/{__version__}",
             },
@@ -976,30 +1264,58 @@ class Api:
         }
 
     # ---------- 供应商 ----------
+    def export_provider_css_example(self):
+        if not self._window:
+            return {"ok": False, "error": "工具箱窗口尚未初始化"}
+        try:
+            from provider_style import EXAMPLE_CSS
+            paths = self._window.create_file_dialog(
+                webview.SAVE_DIALOG, save_filename="provider-card.css",
+                file_types=("CSS 样式 (*.css)",),
+            )
+            if not paths:
+                return {"ok": True, "cancelled": True}
+            path = paths if isinstance(paths, str) else paths[0]
+            if os.path.exists(path):
+                with open(path, "rb") as handle:
+                    handle.read()
+            with open(path, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(EXAMPLE_CSS)
+            return {"ok": True}
+        except Exception as error:
+            return {"ok": False, "error": f"无法保存 CSS 示例：{error}"}
+
     def get_providers(self):
         provs = core.load_providers()
         current = core.read_provider()
+        active_official_model = core.read_model() if current == core.OFFICIAL_ID else ""
         out = []
         for p in provs:
             item = {
                 "id": p["id"],
                 "name": p["name"],
                 "kind": p.get("kind", "relay"),
-                "model": p.get("model", ""),
+                "model": active_official_model if p["id"] == core.OFFICIAL_ID and active_official_model and not p.get("model_explicit") else p.get("model", ""),
                 "reasoning_effort": p.get("reasoning_effort", ""),
                 "base_url": p.get("base_url", ""),
                 "proxy": bool(p.get("proxy")),
                 "wire_api": p.get("wire_api", "responses"),
                 "upstream_base": p.get("upstream_base", ""),
                 "has_api_key": bool(p.get("api_key")),
+                "card_css": p.get("card_css", ""),
+                "secret_unavailable": bool(p.get("_unreadable_secrets")),
                 "current": p["id"] == current,
             }
             out.append(item)
         return out
 
     def save_provider(self, data):
+        with self._provider_lock:
+            return self._save_provider(data)
+
+    def _save_provider(self, data):
         provs = core.load_providers()
-        pid = data.get("id") or ""
+        pid = data.get("id") or "provider_" + secrets.token_hex(8)
         old = next((x for x in provs if x.get("id") == pid), {})
         p = {
             "id": pid,
@@ -1012,12 +1328,17 @@ class Api:
             "reasoning_effort": data.get("reasoning_effort", ""),
             "wire_api": data.get("wire_api", "responses"),
             "requires_openai_auth": False,
+            "card_css": stored_css(data.get("card_css", old.get("card_css", ""))),
         }
+        if old.get("_unreadable_secrets"):
+            p["_unreadable_secrets"] = dict(old["_unreadable_secrets"])
         if data.get("proxy"):
             p["proxy"] = True
             p["upstream_base"] = data.get("upstream_base", "https://api.deepseek.com/v1")
-            p["proxy_token"] = old.get("proxy_token") or secrets.token_urlsafe(32)
+            p["proxy_token"] = old.get("proxy_token") or ("" if any(key.startswith("proxy_token_") for key in old.get("_unreadable_secrets", {})) else secrets.token_urlsafe(32))
         p = core.normalize_provider(p)
+        if pid == core.OFFICIAL_ID:
+            p["model_explicit"] = bool(old.get("model_explicit") or p.get("model") != old.get("model"))
         if p["kind"] == "official":
             p["base_url"] = ""
             p["api_key"] = ""
@@ -1041,6 +1362,10 @@ class Api:
         return {"ok": True, "id": pid}
 
     def delete_provider(self, pid):
+        with self._provider_lock:
+            return self._delete_provider(pid)
+
+    def _delete_provider(self, pid):
         if pid == "openai":
             return {"ok": False, "error": "官方供应商不能删除"}
         if core.read_provider() == pid:
@@ -1066,6 +1391,14 @@ class Api:
         return {"ok": True}
 
     def switch_provider(self, pid):
+        if not self._provider_lock.acquire(blocking=False):
+            return {"ok": False, "error": "通道配置正在更新，请稍候"}
+        try:
+            return self._switch_provider(pid)
+        finally:
+            self._provider_lock.release()
+
+    def _switch_provider(self, pid):
         provs = core.load_providers()
         p = next((x for x in provs if x["id"] == pid), None)
         if not p:
@@ -1075,7 +1408,7 @@ class Api:
             # 全局默认只决定之后新建的会话。不在这里恢复或改写已有会话，
             # 避免不同版本的官方 app-server 无法持久化会话设置时，反过来
             # 阻止正常的全局切换。
-            core.ensure_provider_config(pid, proxy_url)
+            # apply_provider writes the provider block and default together, once.
             name = core.apply_provider(pid, proxy_url)
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -1089,7 +1422,9 @@ class Api:
         issues = []
         if pid != core.OFFICIAL_ID and not p.get("base_url"):
             issues.append("缺少 Base URL")
-        if pid != core.OFFICIAL_ID and not p.get("api_key"):
+        from urllib.parse import urlparse
+        local_service = urlparse(p.get("base_url", "")).hostname in {"localhost", "127.0.0.1", "::1"}
+        if pid != core.OFFICIAL_ID and not p.get("api_key") and not local_service:
             issues.append("缺少 API Key")
         if core._is_dashscope_provider(p):
             if p.get("proxy") or "127.0.0.1" in p.get("base_url", ""):
@@ -1109,6 +1444,27 @@ class Api:
                 "base_url": p.get("base_url", ""), "model": p.get("model", ""),
                 "reasoning_effort": p.get("reasoning_effort", ""),
                 "issues": issues, "advice": advice}
+
+    def network_precheck(self, force=False):
+        """Startup Clash check: warn on disabled/unknown state without blocking use."""
+        started = time.monotonic()
+        try:
+            import network_gate
+            result = network_gate.check(force=bool(force))
+            text = network_gate.warning_text(result)
+            summary = network_gate.status_line(result)
+        except Exception:
+            return {"ok": False, "text": "暂时无法检查 Clash 状态，请手动确认 Clash 已开启。", "summary": "Clash 状态未确认",
+                    "detail": {}, "cached": False,
+                    "elapsed_ms": int((time.monotonic() - started) * 1000)}
+        return {
+            "ok": bool(result.get("ok")),
+            "text": text,
+            "summary": summary,
+            "detail": result,
+            "cached": bool(result.get("cached")),
+            "elapsed_ms": int((time.monotonic() - started) * 1000),
+        }
 
     def test_provider_connection(self, pid):
         """用户主动触发的连接测试，不发送对话内容。"""
@@ -1213,6 +1569,7 @@ class Api:
             s.close()
             port_free = True
         except OSError:
+            s.close()
             port_free = False
 
         if not port_free:
@@ -1230,6 +1587,7 @@ class Api:
             if same:
                 self.proxy_server = object()
                 self.proxy_url = f"http://127.0.0.1:{core.PROXY_PORT}/v1"
+                self._proxy_sessions.setdefault(self.proxy_url, (proxy_token, expected_fingerprint, None))
                 return self.proxy_url
             # 端口属于其他程序或旧配置时，选择空闲端口，不误杀用户进程。
             probe = socket.socket()
@@ -1246,7 +1604,7 @@ class Api:
             cmd = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "codex_proxy.py")]
         cmd += [upstream, model, str(selected_port), provider_id]
         self.proxy_url = f"http://127.0.0.1:{selected_port}/v1"
-        self.proxy_process = subprocess.Popen(cmd, creationflags=subprocess.CREATE_NO_WINDOW)
+        self.proxy_process = subprocess.Popen(cmd, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
         status_url = f"http://127.0.0.1:{selected_port}/status"
         last_error = ""
         for _ in range(30):
@@ -1259,6 +1617,7 @@ class Api:
                         and status.get("auth_required") is True
                         and status.get("config_fingerprint") == expected_fingerprint):
                     self.proxy_server = object()
+                    self._proxy_sessions[self.proxy_url] = (proxy_token, expected_fingerprint, self.proxy_process)
                     return self.proxy_url
             except Exception as exc:
                 last_error = str(exc)
@@ -1569,11 +1928,29 @@ class Api:
         return {"ok": False, "error": "公开测试版不直接修复 Codex 内部数据库。"}
 
     def stop_proxy(self):
-        if self.proxy_process is not None and self.proxy_process.poll() is None:
+        processes = [session[2] for session in self._proxy_sessions.values() if session[2] is not None]
+        if self.proxy_process is not None and self.proxy_process not in processes:
+            processes.append(self.proxy_process)
+        for url, (token, fingerprint, _process) in list(self._proxy_sessions.items()):
             try:
-                self.proxy_process.terminate()
+                request = urllib.request.Request(url.removesuffix("/v1") + "/shutdown",
+                    data=json.dumps({"config_fingerprint": fingerprint}).encode("utf-8"),
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                with urllib.request.urlopen(request, timeout=1) as response:
+                    response.read(1024)
             except Exception:
                 pass
+        for process in processes:
+            try:
+                if process.poll() is None:
+                    try:
+                        process.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        process.terminate()
+                        process.wait(timeout=2)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        self._proxy_sessions.clear()
         self.proxy_process = None
         self.proxy_server = None
         self.proxy_url = ""
@@ -1584,6 +1961,16 @@ class Api:
 
 def _acquire_single_instance():
     """Windows 命名互斥锁：返回 False 表示当前用户已有实例在运行。"""
+    if sys.platform == "darwin":
+        import fcntl
+        handle = open(os.path.join(core._app_dir(), "toolbox.lock"), "a")
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            handle.close()
+            return False
+        globals()["_singleton_lock"] = handle
+        return True
     try:
         import ctypes
         kernel32 = ctypes.windll.kernel32
@@ -1603,6 +1990,15 @@ def _acquire_single_instance():
 
 
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--claude-secret":
+        from claude_channels import ClaudeChannels
+        try:
+            key = ClaudeChannels().secret(sys.argv[2])
+            result = secret_store.write_auth_stdout(key)
+        except Exception:
+            raise SystemExit(1)
+        raise SystemExit(0 if result else 1)
+
     if len(sys.argv) >= 2 and sys.argv[1] == "--auth-secret":
         raise SystemExit(secret_store.main(sys.argv[2:]))
 
@@ -1634,20 +2030,33 @@ def main():
         args = sys.argv[i + 1:i + 5]
         if len(args) >= 4:
             import codex_proxy
-            import time
             upstream, model, port_text, provider_id = args
             key = secret_store.read_provider_secret(provider_id)
             proxy_token = secret_store.read_provider_proxy_secret(provider_id)
-            codex_proxy.start_proxy(
+            server, _ = codex_proxy.start_proxy(
                 upstream, key, model, int(port_text), provider_id=provider_id, proxy_token=proxy_token,
             )
-            while True:
-                time.sleep(10)
+            try:
+                server.stop_event.wait()
+            finally:
+                server.shutdown()
+                server.server_close()
         return
 
     # 单实例锁：已有实例在跑则直接退出（避免多个窗口/托盘图标）
     if not _acquire_single_instance():
         return
+
+    if sys.platform == "win32":
+        # Give Explorer a stable taskbar identity instead of inferring one
+        # from the executable path and its previously cached artwork.
+        import ctypes
+        set_app_id = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID
+        set_app_id.argtypes = [ctypes.c_wchar_p]
+        set_app_id.restype = ctypes.c_long
+        result = set_app_id("CodexToolbox.Desktop")
+        if result < 0:
+            raise OSError(result, "Cannot set toolbox taskbar identity")
 
     auth_migration_error = ""
     if os.path.isfile(core.CONFIG):
@@ -1666,7 +2075,7 @@ def main():
         width=1060,
         height=820,
         min_size=(960, 720),
-        background_color="#0e1116",
+        background_color="#f4f7fc",
     )
     api.set_window(window)
     threading.Thread(target=api.resume_saved_surface_translation, name="codex-translation-resume", daemon=True).start()
@@ -1681,6 +2090,7 @@ def main():
 
     def tray_quit():
         exiting["flag"] = True
+        api.stop_claude_translation()
         api.stop_surface_translation()
         api.stop_proxy()
         api.stop_background_media()
@@ -1702,8 +2112,6 @@ def main():
             menu = pystray.Menu(
                 pystray.MenuItem("显示工具箱", tray_show, default=True),
                 pystray.Menu.SEPARATOR,
-                pystray.MenuItem("停止代理", lambda: api.stop_proxy()),
-                pystray.Menu.SEPARATOR,
                 pystray.MenuItem("退出", tray_quit),
             )
             tray = pystray.Icon("codex_toolbox", img, "Codex 工具箱", menu)
@@ -1711,9 +2119,12 @@ def main():
         except Exception:
             pass  # 托盘失败不影响主程序
 
-    threading.Thread(target=tray_setup, daemon=True).start()
+    if sys.platform != "darwin":
+        threading.Thread(target=tray_setup, daemon=True).start()
 
     def on_closing():
+        if sys.platform == "darwin":
+            return True
         if exiting["flag"]:
             return True  # 真正退出
         try:
@@ -1724,12 +2135,14 @@ def main():
 
     window.events.closing += on_closing
     def stop_local_services():
+        api.stop_claude_translation()
         api.stop_surface_translation()
         api.stop_proxy()
         api.stop_background_media()
 
     window.events.closed += stop_local_services
-    webview.start()
+    # Load the bundled artwork directly instead of shell-cached EXE extraction.
+    webview.start(icon=_toolbox_icon_path() or None)
 
 
 if __name__ == "__main__":

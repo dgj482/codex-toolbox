@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Windows DPAPI 密钥存储。
+"""Windows DPAPI / macOS Keychain 密钥存储。
 
-密钥只能由保存它的 Windows 用户解密。公开版不会把明文密钥写入
+密钥由当前用户的系统安全存储保护。公开版不会把明文密钥写入
 providers.json、config.toml、日志或子进程命令行。
 """
 
@@ -13,11 +13,23 @@ from ctypes import wintypes
 import json
 import os
 import sys
+import uuid
 
 
 APP_DIR_NAME = "CodexToolbox"
 PROVIDERS_FILENAME = "providers.json"
 CRYPTPROTECT_UI_FORBIDDEN = 0x01
+_keychain_refs = {}
+
+
+def _mac_keychain():
+    # Explicit backend: never fall back to a plaintext keyring implementation.
+    from keyring.backends.macOS import Keyring
+    return Keyring()
+
+
+def secret_field(name):
+    return name + ("_keychain" if sys.platform == "darwin" else "_dpapi")
 
 
 class _DataBlob(ctypes.Structure):
@@ -25,7 +37,8 @@ class _DataBlob(ctypes.Structure):
 
 
 def app_data_dir() -> str:
-    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    base = (os.path.expanduser("~/Library/Application Support") if sys.platform == "darwin"
+            else os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"))
     path = os.path.join(base, APP_DIR_NAME)
     os.makedirs(path, exist_ok=True)
     return path
@@ -63,6 +76,14 @@ def _crypt32():
 def protect_secret(secret: str) -> str:
     if not secret:
         return ""
+    if sys.platform == "darwin":
+        if secret in _keychain_refs:
+            return _keychain_refs[secret]
+        account = str(uuid.uuid4())
+        _mac_keychain().set_password(APP_DIR_NAME, account, secret)
+        reference = "keychain:" + account
+        _keychain_refs[secret] = reference
+        return reference
     source, source_buffer = _blob(secret.encode("utf-8"))
     result = _DataBlob()
     crypt32 = _crypt32()
@@ -83,6 +104,15 @@ def protect_secret(secret: str) -> str:
 def unprotect_secret(encoded: str) -> str:
     if not encoded:
         return ""
+    if encoded.startswith("keychain:"):
+        if sys.platform != "darwin":
+            raise RuntimeError("macOS Keychain 密钥必须在原 Mac 用户账户下读取，请重新填写密钥。")
+        account = str(uuid.UUID(encoded.split(":", 1)[1]))
+        secret = _mac_keychain().get_password(APP_DIR_NAME, account)
+        if secret is None:
+            raise RuntimeError("Keychain 中找不到该密钥，请重新填写。")
+        _keychain_refs[secret] = encoded
+        return secret
     encrypted = base64.b64decode(encoded, validate=True)
     source, source_buffer = _blob(encrypted)
     result = _DataBlob()
@@ -111,7 +141,7 @@ def read_provider_secret(provider_id: str, path: str | None = None) -> str:
     for provider in data.get("providers", []):
         if provider.get("id") != provider_id:
             continue
-        encrypted = provider.get("api_key_dpapi", "")
+        encrypted = provider.get("api_key_keychain") or provider.get("api_key_dpapi", "")
         if not encrypted:
             raise RuntimeError(f"供应商 {provider_id} 没有已保存的密钥")
         return unprotect_secret(encrypted)
@@ -126,7 +156,7 @@ def read_provider_proxy_secret(provider_id: str, path: str | None = None) -> str
     for provider in data.get("providers", []):
         if provider.get("id") != provider_id:
             continue
-        encrypted = provider.get("proxy_token_dpapi", "")
+        encrypted = provider.get("proxy_token_keychain") or provider.get("proxy_token_dpapi", "")
         if not encrypted:
             raise RuntimeError(f"供应商 {provider_id} 没有本地代理令牌")
         return unprotect_secret(encrypted)

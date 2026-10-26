@@ -23,6 +23,11 @@ def main() -> None:
             "api_key_dpapi": secret_store.protect_secret("dummy-provider-token"),
             "proxy_token_dpapi": secret_store.protect_secret("dummy-proxy-token"),
         }]}), encoding="utf-8")
+        claude_id = "claude-" + "0" * 32
+        (data_dir / "claude_providers.json").write_text(json.dumps({"providers": [{
+            "id": claude_id,
+            "api_key_dpapi": secret_store.protect_secret("dummy-claude-token"),
+        }]}), encoding="utf-8")
         environment = os.environ.copy()
         environment["LOCALAPPDATA"] = temp
         for name in list(environment):
@@ -30,17 +35,18 @@ def main() -> None:
                 environment.pop(name)
         environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
         for args, expected in (
-            (["single-file-smoke"], b"dummy-provider-token"),
-            (["--proxy", "single-file-smoke"], b"dummy-proxy-token"),
+            (["--auth-secret", "single-file-smoke"], b"dummy-provider-token"),
+            (["--auth-secret", "--proxy", "single-file-smoke"], b"dummy-proxy-token"),
+            (["--claude-secret", claude_id], b"dummy-claude-token"),
         ):
             result = subprocess.run(
-                [str(executable), "--auth-secret", *args],
+                [str(executable), *args],
                 capture_output=True, env=environment, timeout=30,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
             if result.returncode != 0 or result.stdout != expected:
                 raise SystemExit(f"Frozen command-auth pipe failed: exit={result.returncode}, bytes={len(result.stdout)}")
-        print("Single-file provider and proxy authentication pipes OK")
+        print("Single-file Codex, proxy and Claude credential pipes OK")
 
 
 if __name__ == "__main__":

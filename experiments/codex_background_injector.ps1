@@ -89,6 +89,7 @@ $OutputEncoding = $utf8
 
 function Get-CodexDesktopProcess {
     param([string]$ExpectedExecutable = "")
+    if ($IsMacOS) { return Get-MacCodexProcesses -Expected $ExpectedExecutable }
     $expected = if ([string]::IsNullOrWhiteSpace($ExpectedExecutable)) {
         ""
     } else {
@@ -104,6 +105,7 @@ function Get-CodexDesktopProcess {
 }
 
 function Get-CodexExecutable {
+    if ($IsMacOS) { return Resolve-MacCodexExecutable -Configured $CodexExecutable }
     if (-not [string]::IsNullOrWhiteSpace($CodexExecutable)) {
         $configured = [IO.Path]::GetFullPath($CodexExecutable)
         if (-not (Test-Path -LiteralPath $configured -PathType Leaf) -or
@@ -339,7 +341,7 @@ if (-not $targets) {
         ForEach-Object { Remove-Item -LiteralPath ("Env:" + $_.Name) -ErrorAction SilentlyContinue }
     Remove-Item Env:PYINSTALLER_RESET_ENVIRONMENT -ErrorAction SilentlyContinue
     $appProcessId = Start-CodexDesktopApp -Executable $codexExecutable -Port $Port
-    Write-Host "已通过 Windows 包激活 Codex（PID：$appProcessId），最多等待 75 秒开启本机调试端口 $Port …"
+    Write-Host "已启动 Codex（$appProcessId），最多等待 75 秒开启本机调试端口 $Port …"
     $targets = Wait-DebugEndpoint -TargetPort $Port
 }
 

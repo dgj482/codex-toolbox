@@ -9,7 +9,7 @@ if (!scripts.length) throw new Error('ui.html contains no inline script');
 for (const [, source] of scripts) new Function(source);
 const launchButtons = html.match(/onclick="launchCodexHub\(\)"/g) || [];
 if (launchButtons.length !== 1) throw new Error(`expected one central launch button, found ${launchButtons.length}`);
-for (const feature of ['channel_switching', 'session_routing', 'session_archive', 'local_appearance', 'surface_translation', 'diagnostics']) {
+for (const feature of ['channel_switching', 'session_routing', 'session_archive', 'local_appearance', 'surface_translation']) {
   if (!html.includes(`data-feature-toggle="${feature}"`)) throw new Error(`missing feature toggle: ${feature}`);
 }
 for (const stale of ['launchCodexWithSavedBackground', 'startLiveBackgroundPreview', 'applySurfaceTranslation(true)', 'function applyBackground(']) {
@@ -45,12 +45,12 @@ documentStub.execCommand = (command, _showUi, value) => {assert.strictEqual(comm
 editing = editorApi(class Textarea {}, class Input {}, documentStub, () => selection);
 assert.strictEqual(editing.setEditorText(editor, 'What features were fixed?'), true);
 assert.strictEqual(editor.innerText, 'What features were fixed?');
-const buttonsStart = overlay.indexOf('function findSendButton(editor)');
+const buttonsStart = overlay.indexOf('function sendButtonKind(button)');
 const buttonsMiddle = overlay.indexOf('function parkControls()', buttonsStart);
 const fallbackStart = overlay.indexOf('function fallbackSendButton(editor)', buttonsMiddle);
 const buttonsEnd = overlay.indexOf('function preview(original,translated,editor,direction)', buttonsStart);
 assert(buttonsStart >= 0 && buttonsMiddle > buttonsStart && fallbackStart > buttonsMiddle && buttonsEnd > fallbackStart, 'composer send logic missing');
-const sendApi = new Function(overlay.slice(buttonsStart, buttonsMiddle) + overlay.slice(fallbackStart, buttonsEnd) + 'return {enabledSendButton};')();
+const sendApi = new Function('root', 'const config={};'+overlay.slice(buttonsStart, buttonsMiddle) + overlay.slice(fallbackStart, buttonsEnd) + 'return {enabledSendButton};')({contains: () => false});
 const stop = {disabled: false, type: 'button', getAttribute: () => 'Stop', title: '', textContent: 'Stop'};
 const send = {disabled: false, type: 'button', getAttribute: () => 'Send', title: '', textContent: 'Send'};
 const footer = {querySelectorAll: () => [stop]};
@@ -60,7 +60,18 @@ assert.strictEqual(sendApi.enabledSendButton(composer), null, 'Stop must never b
 footer.querySelectorAll = () => [send];
 scope.querySelectorAll = () => [send];
 assert.strictEqual(sendApi.enabledSendButton(composer), send);
+const labelledButton = (label, extra = {}) => ({disabled: false, type: 'button', title: '', textContent: '', getAttribute: key => key === 'aria-label' ? label : null, ...extra});
+for (const label of ['Send message', 'Send (Enter)', '发送消息', 'Queue message', 'Steer']) {
+  const action = labelledButton(label);scope.querySelectorAll = () => [action];
+  assert.strictEqual(sendApi.enabledSendButton(composer), action);
+}
+for (const action of [labelledButton('Stop generating', {type: 'submit'}), labelledButton('Cancel', {type: 'submit'}), labelledButton('Send', {getClientRects: () => []}), labelledButton('Send', {getAttribute: key => key === 'aria-disabled' ? 'true' : 'Send'})]) {
+  scope.querySelectorAll = () => [action];assert.strictEqual(sendApi.enabledSendButton(composer), null);
+}
 assert(overlay.includes('Date.now()>=started+SEND_SETTLE_MS'), 'send must wait for editor settlement');
 assert(overlay.includes('editorText(target).trim()!==translated.trim()'), 'send must verify translated draft');
 require('./check_translation_rules.js');
+require('./check_translation_controls.js');
+require('./check_translation_enter.js');
+require('./check_claude_translation.js')().catch(error => {console.error(error); process.exitCode = 1;});
 console.log('UI and translation overlay contracts OK');

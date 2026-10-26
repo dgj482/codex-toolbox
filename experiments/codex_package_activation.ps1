@@ -1,8 +1,48 @@
-# Launch the Store app through Windows activation so it receives its package identity.
+# Desktop platform adapter. Windows retains package identity; macOS uses its app bundle.
+function Resolve-MacCodexExecutable {
+    param([string]$Configured = "")
+    $candidates = if ($Configured) { @($Configured) } else {
+        @("/Applications/Codex.app", (Join-Path ([Environment]::GetFolderPath("UserProfile")) "Applications/Codex.app"))
+    }
+    foreach ($candidate in $candidates) {
+        $candidate = [IO.Path]::GetFullPath($candidate)
+        if ($candidate.EndsWith(".app", [StringComparison]::OrdinalIgnoreCase)) {
+            $plist = Join-Path $candidate "Contents/Info.plist"
+            if (-not (Test-Path -LiteralPath $plist -PathType Leaf)) { continue }
+            $bundleExecutable = & /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" $plist
+            if ($LASTEXITCODE -ne 0 -or -not $bundleExecutable) { throw "无法读取 Codex 应用包入口。" }
+            $candidate = Join-Path $candidate ("Contents/MacOS/" + $bundleExecutable.Trim())
+        }
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    }
+    throw "未找到 Codex.app，请安装到 Applications 或选择其应用包。"
+}
+
+function Get-MacCodexProcesses {
+    param([string]$Expected = "")
+    $executable = Resolve-MacCodexExecutable -Configured $Expected
+    $rows = & /bin/ps -axo pid=,comm=
+    if ($LASTEXITCODE -ne 0) { throw "无法检测 Codex 进程。" }
+    foreach ($row in $rows) {
+        if ($row -match '^\s*(\d+)\s+(.+)$' -and $Matches[2] -eq $executable) {
+            [PSCustomObject]@{ ProcessId = [int]$Matches[1]; ExecutablePath = $Matches[2]; Name = "Codex" }
+        }
+    }
+}
+
 function Start-CodexDesktopApp {
     param([string]$Executable, [int]$Port)
 
     $arguments = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$Port"
+    if ($IsMacOS) {
+        $resolved = Resolve-MacCodexExecutable -Configured $Executable
+        $bundleMarker = $resolved.IndexOf(".app/Contents/", [StringComparison]::OrdinalIgnoreCase)
+        if ($bundleMarker -lt 0) { throw "Codex 桌面启动入口必须位于 .app 应用包内。" }
+        $bundle = $resolved.Substring(0, $bundleMarker + 4)
+        & /usr/bin/open -a $bundle --args "--remote-debugging-address=127.0.0.1" "--remote-debugging-port=$Port"
+        if ($LASTEXITCODE -ne 0) { throw "无法打开 Codex.app。" }
+        return "macOS"
+    }
     $package = Get-AppxPackage -Name "OpenAI.Codex" -ErrorAction SilentlyContinue |
         Sort-Object Version -Descending | Select-Object -First 1
     if (-not $package) { throw "未找到 Codex 商店版安装包。" }

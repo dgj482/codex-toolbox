@@ -16,6 +16,7 @@ const document = {body: {}, createTreeWalker() {
   return {currentNode: null, nextNode() {this.currentNode = nodes[next++]; return !!this.currentNode;}};
 }};
 const rules = new Function('config', 'state', 'root', 'document', 'NodeFilter', 'nodeRect', 'inViewport',
+  section('const appName=', 'const dictionary =') +
   section('const dictionary =', 'const BODY_TRANSLATION_CONCURRENCY') +
   section('function baseExcluded(node)', 'function makeTranslatedRaw') +
   section('function replacementStillAllowed(node,entry)', 'async function translateMenuQueue') +

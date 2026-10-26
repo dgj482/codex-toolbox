@@ -5,7 +5,7 @@ import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXCLUDED_DIRS = {".git", ".venv", "venv", "build", "dist", "__pycache__", ".pytest_cache"}
+EXCLUDED_DIRS = {".git", ".venv", ".venv-macos", "venv", "build", "dist", "__pycache__", ".pytest_cache"}
 TEXT_SUFFIXES = {".py", ".html", ".md", ".toml", ".json", ".yml", ".yaml", ".ps1", ".txt", ".spec"}
 FORBIDDEN_NAMES = {"providers.json", "thread_routes.json"}
 RULES = {

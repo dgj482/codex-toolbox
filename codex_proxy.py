@@ -16,7 +16,7 @@ from urllib import request as urlreq
 from urllib import error as urlerr
 import secret_store
 
-VERSION = "0.2"
+VERSION = "0.3"
 
 
 def config_fingerprint(upstream_base, api_key, model, provider_id):
@@ -415,6 +415,21 @@ class ProxyHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(length) if length else b"{}"
             body = json.loads(raw.decode("utf-8")) if raw else {}
+            if path == "/shutdown":
+                expected = config_fingerprint(ProxyConfig.upstream_base, ProxyConfig.api_key,
+                                              ProxyConfig.model, ProxyConfig.provider_id)
+                if not hmac.compare_digest(str(body.get("config_fingerprint", "")), expected):
+                    self._send_error(409, "Proxy configuration changed", "configuration_mismatch")
+                    return
+                payload = b'{"ok":true}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                self.wfile.flush()
+                self.server.stop_event.set()
+                return
             _log(f"POST {path} len={length} model={body.get('model', '')}")
             if path.endswith("/responses"):
                 state = {
@@ -496,6 +511,7 @@ def start_proxy(upstream_base, api_key, model, port=18732, provider_id="", proxy
     ProxyConfig.provider_id = provider_id
     ProxyConfig.proxy_token = proxy_token
     server = ThreadingHTTPServer(("127.0.0.1", port), ProxyHandler)
+    server.stop_event = threading.Event()
     actual_port = server.server_address[1]
     ProxyConfig.port = actual_port
     t = threading.Thread(target=server.serve_forever, daemon=True)
@@ -515,7 +531,9 @@ if __name__ == "__main__":
     print(f"Codex 翻译代理运行中: http://127.0.0.1:{p}/v1 -> {base}")
     print(f"上游模型: {model}")
     try:
-        while True:
-            time.sleep(1)
+        server.stop_event.wait()
     except KeyboardInterrupt:
+        pass
+    finally:
         server.shutdown()
+        server.server_close()

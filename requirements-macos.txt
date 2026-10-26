@@ -1,0 +1,4 @@
+-r requirements.txt
+keyring>=25,<26
+pyobjc>=10,<13
+pyinstaller>=6,<7
